@@ -25,7 +25,8 @@ fetch('https://browserless-test.vercel.app/api/extract', {
     
     if (data.success && data.data.tiktok) {
       console.log('\n🎉 ¡TikTok extraído correctamente!');
-      console.log('Métricas:', Object.keys(data.data.tiktok));
+      console.log('Período:', data.data.tiktok.periodo);
+      console.log('Métricas:', Object.keys(data.data.tiktok).filter(k => k !== 'periodo'));
     }
   })
   .catch(err => {

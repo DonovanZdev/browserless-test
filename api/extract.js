@@ -129,7 +129,7 @@ async function extractTikTokData(tiktokCookies) {
   await browser.close();
   
   // Usar OpenAI Vision para extraer datos
-  const prompt = "En esta screenshot de TikTok Studio, extrae EXACTAMENTE estos KPIs de la sección de 'Métricas clave': 1) Visualizaciones de videos (número principal en la primera tarjeta), 2) Visualizaciones de perfil (número en la segunda tarjeta), 3) Me gusta (número total de likes recibidos), 4) Comentarios (número total de comentarios), 5) Veces compartido (número total de shares), 6) Recomendaciones estimadas (número con $ si aplica). Responde SOLO en JSON sin explicaciones: {\"visualizaciones_videos\": \"XXX\", \"visualizaciones_perfil\": \"XXX\", \"me_gusta\": \"XXX\", \"comentarios\": \"XXX\", \"veces_compartido\": \"XXX\", \"recomendaciones\": \"$XXX\"}";
+  const prompt = "En esta screenshot de TikTok Studio, extrae EXACTAMENTE estos KPIs de la sección de 'Métricas clave': 1) Visualizaciones de videos (número principal en la primera tarjeta), 2) Visualizaciones de perfil (número en la segunda tarjeta), 3) Me gusta (número total de likes recibidos), 4) Comentarios (número total de comentarios), 5) Veces compartido (número total de shares), 6) Recompensas estimadas (número con $ si aplica). TAMBIÉN extrae el PERIODO que aparece en la esquina superior derecha (ej: 'Los últimos 7 días', 'Los últimos 28 días', etc). Responde SOLO en JSON sin explicaciones: {\"visualizaciones_videos\": \"XXX\", \"visualizaciones_perfil\": \"XXX\", \"me_gusta\": \"XXX\", \"comentarios\": \"XXX\", \"veces_compartido\": \"XXX\", \"recompensas_estimadas\": \"$XXX\", \"periodo\": \"Los últimos X días\"}";
   
   const response = await openai.chat.completions.create({
     model: "gpt-4o",
