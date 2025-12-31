@@ -34,49 +34,85 @@ async function extractMetaData(cookies, url, platform) {
 
   const rendimientoData = await page.evaluate((plat) => {
     const data = {};
-    const allText = document.body.innerText;
     
     if (plat === 'instagram') {
-      // Para Instagram
-      const vizMatch = allText.match(/Visualizaciones[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
-      if (vizMatch) data.visualizaciones = vizMatch[1];
+      // Para Instagram, buscar por estructura HTML más específica
       
-      const alcanceMatch = allText.match(/Alcance de Instagram[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
-      if (alcanceMatch) data.alcance = alcanceMatch[1];
+      // Visualizaciones
+      const vizSection = Array.from(document.querySelectorAll('*')).find(el => 
+        el.textContent?.includes('Visualizaciones') && el.textContent?.includes('mill.')
+      );
+      if (vizSection) {
+        const vizMatch = vizSection.textContent.match(/Visualizaciones[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
+        if (vizMatch) data.visualizaciones = vizMatch[1];
+      }
       
-      const intMatch = allText.match(/Interacciones con el contenido[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
-      if (intMatch) data.interacciones = intMatch[1];
+      // Alcance de Instagram
+      const alcanceSection = Array.from(document.querySelectorAll('*')).find(el =>
+        el.textContent?.includes('Alcance de Instagram') && el.textContent?.includes('mill.')
+      );
+      if (alcanceSection) {
+        const alcanceMatch = alcanceSection.textContent.match(/Alcance de Instagram[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
+        if (alcanceMatch) data.alcance = alcanceMatch[1];
+      }
       
-      // Para Instagram, buscar "Seguidores" pero evitar "Personas que dejaron"
-      const seguidoresMatch = allText.match(/^Seguidores[\s\S]*?(\d+[\s,]*\d*\s*mil[l]?\.?)/m);
-      if (seguidoresMatch) {
-        data.seguidores = seguidoresMatch[1];
-      } else {
-        // Alternativa: buscar todos los números con "mil" en la sección de Seguidores
-        const lines = allText.split('\n');
-        for (let i = 0; i < lines.length; i++) {
-          if (lines[i].includes('Seguidores') && !lines[i].includes('Personas que dejaron')) {
-            const match = lines[i].match(/(\d+[\s,]*\d*\s*mil[l]?)/);
-            if (match) {
-              data.seguidores = match[1];
-              break;
-            }
+      // Interacciones
+      const intSection = Array.from(document.querySelectorAll('*')).find(el =>
+        el.textContent?.includes('Interacciones con el contenido') && el.textContent?.includes('mill.')
+      );
+      if (intSection) {
+        const intMatch = intSection.textContent.match(/Interacciones con el contenido[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
+        if (intMatch) data.interacciones = intMatch[1];
+      }
+      
+      // Seguidores - buscar específicamente el número grande en la sección de Seguidores
+      const allDivs = document.querySelectorAll('[class*="insight"], [class*="stat"], div');
+      for (let div of allDivs) {
+        if (div.textContent?.includes('Seguidores') && 
+            !div.textContent?.includes('Personas que dejaron')) {
+          // Buscar el número más grande en mil dentro de esta sección
+          const matches = div.textContent.match(/(\d+[\s,]*\d*)\s*mil(?![\.,])/g);
+          if (matches && matches.length > 0) {
+            // Tomar el primer match que no sea muy pequeño
+            data.seguidores = matches[0];
+            break;
           }
         }
       }
     } else {
       // Para Facebook
-      const vizMatch = allText.match(/Visualizaciones[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
-      if (vizMatch) data.visualizaciones = vizMatch[1];
+      const vizSection = Array.from(document.querySelectorAll('*')).find(el =>
+        el.textContent?.includes('Visualizaciones') && el.textContent?.includes('mill.')
+      );
+      if (vizSection) {
+        const vizMatch = vizSection.textContent.match(/Visualizaciones[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
+        if (vizMatch) data.visualizaciones = vizMatch[1];
+      }
       
-      const intMatch = allText.match(/Interacciones con el contenido[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
-      if (intMatch) data.interacciones = intMatch[1];
+      const intSection = Array.from(document.querySelectorAll('*')).find(el =>
+        el.textContent?.includes('Interacciones con el contenido') && el.textContent?.includes('mill.')
+      );
+      if (intSection) {
+        const intMatch = intSection.textContent.match(/Interacciones con el contenido[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
+        if (intMatch) data.interacciones = intMatch[1];
+      }
       
-      const visitMatch = allText.match(/Visitas de Facebook[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
-      if (visitMatch) data.visitas = visitMatch[1];
+      const visitSection = Array.from(document.querySelectorAll('*')).find(el =>
+        el.textContent?.includes('Visitas de Facebook') && el.textContent?.includes('mill.')
+      );
+      if (visitSection) {
+        const visitMatch = visitSection.textContent.match(/Visitas de Facebook[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
+        if (visitMatch) data.visitas = visitMatch[1];
+      }
       
-      const followMatch = allText.match(/Seguidores[\s\S]*?(\d+[\s,]*\d*\s*mil[l]?\.?)/);
-      if (followMatch) data.seguidores = followMatch[1];
+      const followSection = Array.from(document.querySelectorAll('*')).find(el =>
+        el.textContent?.includes('Seguidores') && el.textContent?.includes('mil') &&
+        !el.textContent?.includes('Personas que dejaron')
+      );
+      if (followSection) {
+        const followMatch = followSection.textContent.match(/(\d+[\s,]*\d*)\s*mil/);
+        if (followMatch) data.seguidores = followMatch[1];
+      }
     }
     
     return data;
