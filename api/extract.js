@@ -43,8 +43,8 @@ async function extractMetaData(cookies, url, platform) {
   
   // Usar OpenAI Vision para extraer datos
   const prompt = platform === 'instagram' 
-    ? "En esta screenshot de Instagram Business Suite, extrae exactamente estos números: Visualizaciones (mill.), Alcance de Instagram (mill.), Interacciones con el contenido (mill.), y Seguidores. Responde en JSON: {\"visualizaciones\": \"XXX mill.\", \"alcance\": \"XXX mill.\", \"interacciones\": \"XXX mill.\", \"seguidores\": \"XXX mil\"}"
-    : "En esta screenshot de Facebook Business Suite, extrae exactamente estos números: Visualizaciones (mill.), Interacciones con el contenido (mill.), Visitas de Facebook (mill.), y Seguidores. Responde en JSON: {\"visualizaciones\": \"XXX mill.\", \"interacciones\": \"XXX mill.\", \"visitas\": \"XXX mill.\", \"seguidores\": \"XXX mil\"}";
+    ? "En esta screenshot de Instagram Business Suite, extrae EXACTAMENTE estos KPIs de la sección INFERIOR DERECHA que dice 'Seguidores': 1) Visualizaciones (número grande en mill. de la sección superior izquierda), 2) Alcance de Instagram (número grande en mill. de la sección superior derecha), 3) Interacciones con el contenido (número en mill. de la sección inferior izquierda), 4) Seguidores (número en mil. de la sección inferior derecha, debe ser un número pequeño como 6 mil, NO los 718,840 que aparecen bajo 'De seguidores'). Responde SOLO en JSON sin explicaciones: {\"visualizaciones\": \"XXX mill.\", \"alcance\": \"XXX mill.\", \"interacciones\": \"XXX mill.\", \"seguidores\": \"X.X mil\"}"
+    : "En esta screenshot de Facebook Business Suite, extrae EXACTAMENTE estos KPIs: 1) Visualizaciones (mill.), 2) Interacciones con el contenido (mill.), 3) Visitas de Facebook (mill.), 4) Seguidores (mil). Responde SOLO en JSON sin explicaciones: {\"visualizaciones\": \"XXX mill.\", \"interacciones\": \"XXX mill.\", \"visitas\": \"XXX mill.\", \"seguidores\": \"XXX mil\"}";
   
   const response = await openai.chat.completions.create({
     model: "gpt-4o",
