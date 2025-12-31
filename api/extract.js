@@ -46,8 +46,8 @@ async function extractMetaData(cookies, url, platform) {
     ? "En esta screenshot de Instagram Business Suite, extrae exactamente estos números: Visualizaciones (mill.), Alcance de Instagram (mill.), Interacciones con el contenido (mill.), y Seguidores. Responde en JSON: {\"visualizaciones\": \"XXX mill.\", \"alcance\": \"XXX mill.\", \"interacciones\": \"XXX mill.\", \"seguidores\": \"XXX mil\"}"
     : "En esta screenshot de Facebook Business Suite, extrae exactamente estos números: Visualizaciones (mill.), Interacciones con el contenido (mill.), Visitas de Facebook (mill.), y Seguidores. Responde en JSON: {\"visualizaciones\": \"XXX mill.\", \"interacciones\": \"XXX mill.\", \"visitas\": \"XXX mill.\", \"seguidores\": \"XXX mil\"}";
   
-  const response = await openai.vision.completions.create({
-    model: "gpt-4-vision-preview",
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o",
     messages: [
       {
         role: "user",
@@ -65,6 +65,7 @@ async function extractMetaData(cookies, url, platform) {
         ],
       },
     ],
+    max_tokens: 200,
   });
 
   // Parsear respuesta de OpenAI
