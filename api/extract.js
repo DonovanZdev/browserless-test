@@ -88,6 +88,86 @@ async function extractMetaData(cookies, url, platform) {
   return data;
 }
 
+async function extractTikTokData(tiktokCookies) {
+  if (!tiktokCookies) {
+    throw new Error("TikTok cookies requeridas");
+  }
+
+  const browser = await puppeteer.connect({
+    browserWSEndpoint: `wss://production-sfo.browserless.io?token=${TOKEN}`,
+  });
+
+  const page = await browser.newPage();
+  
+  await page.setViewport({ width: 1920, height: 1080 });
+  
+  // Convertir cookies a array si es necesario
+  let cookieArray = tiktokCookies;
+  if (typeof tiktokCookies === 'object' && !Array.isArray(tiktokCookies)) {
+    cookieArray = Object.entries(tiktokCookies).map(([name, value]) => ({
+      name,
+      value,
+      domain: '.tiktok.com',
+      path: '/'
+    }));
+  }
+  
+  await page.setCookie(...cookieArray);
+
+  const url = "https://www.tiktok.com/tiktokstudio?dateRange=%7B%22type%22%3A%22fixed%22%2C%22pastDay%22%3A7%7D&activeAnalyticsMetric=video_views";
+  
+  await page.goto(url, {
+    waitUntil: 'networkidle2',
+    timeout: 60000
+  });
+
+  await sleep(3000);
+  
+  // Tomar screenshot en base64
+  const screenshot = await page.screenshot({ encoding: 'base64' });
+  
+  await browser.close();
+  
+  // Usar OpenAI Vision para extraer datos
+  const prompt = "En esta screenshot de TikTok Studio, extrae EXACTAMENTE estos KPIs de la sección de 'Métricas clave': 1) Visualizaciones de videos (número principal en la primera tarjeta), 2) Visualizaciones de perfil (número en la segunda tarjeta), 3) Me gusta (número total de likes recibidos), 4) Comentarios (número total de comentarios), 5) Veces compartido (número total de shares), 6) Recomendaciones estimadas (número con $ si aplica). Responde SOLO en JSON sin explicaciones: {\"visualizaciones_videos\": \"XXX\", \"visualizaciones_perfil\": \"XXX\", \"me_gusta\": \"XXX\", \"comentarios\": \"XXX\", \"veces_compartido\": \"XXX\", \"recomendaciones\": \"$XXX\"}";
+  
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "image_url",
+            image_url: {
+              url: `data:image/png;base64,${screenshot}`,
+            },
+          },
+          {
+            type: "text",
+            text: prompt,
+          },
+        ],
+      },
+    ],
+    max_tokens: 200,
+  });
+
+  // Parsear respuesta de OpenAI
+  let data = {};
+  try {
+    const content = response.choices[0].message.content;
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      data = JSON.parse(jsonMatch[0]);
+    }
+  } catch (e) {
+    console.error("Error parsing OpenAI response:", e);
+  }
+  
+  return data;
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: "Solo POST permitido" });
@@ -111,7 +191,7 @@ module.exports = async function handler(req, res) {
     const urls = {
       facebook: "https://business.facebook.com/latest/insights/overview?business_id=176166689688823&asset_id=8555156748&time_range=%257B%2522end%2522%253A%25222025-12-03%2522%252C%2522start%2522%253A%25222025-12-03%2522%257D",
       instagram: "https://business.facebook.com/latest/insights/overview?business_id=176166689688823&asset_id=8555156748&time_range=%257B%2522end%2522%253A%25222025-12-03%2522%252C%2522start%2522%253A%25222025-12-03%2522%257D&platform=Instagram",
-      tiktok: "https://www.tiktok.com/tiktokstudio/dashboard"
+      tiktok: "https://www.tiktok.com/tiktokstudio?dateRange=%7B%22type%22%3A%22fixed%22%2C%22pastDay%22%3A7%7D&activeAnalyticsMetric=video_views"
     };
     
     // Determinar qué plataformas extraer
@@ -132,15 +212,29 @@ module.exports = async function handler(req, res) {
       // Convertir cookies a array si es necesario
       let cookieArray = plat_cookies;
       if (typeof plat_cookies === 'object' && !Array.isArray(plat_cookies)) {
-        cookieArray = Object.entries(plat_cookies).map(([name, value]) => ({
-          name,
-          value,
-          domain: plat === 'tiktok' ? '.tiktok.com' : '.facebook.com'
-        }));
+        if (plat === 'tiktok') {
+          // Para TikTok, usar como objeto directo para ScraperAPI
+          console.log(`Extrayendo datos de ${plat}...`);
+          results[plat] = await extractTikTokData(plat_cookies);
+        } else {
+          // Para Facebook/Instagram, convertir a array
+          cookieArray = Object.entries(plat_cookies).map(([name, value]) => ({
+            name,
+            value,
+            domain: plat === 'tiktok' ? '.tiktok.com' : '.facebook.com'
+          }));
+          
+          console.log(`Extrayendo datos de ${plat}...`);
+          results[plat] = await extractMetaData(cookieArray, urls[plat], plat);
+        }
+      } else {
+        console.log(`Extrayendo datos de ${plat}...`);
+        if (plat === 'tiktok') {
+          results[plat] = await extractTikTokData(plat_cookies);
+        } else {
+          results[plat] = await extractMetaData(cookieArray, urls[plat], plat);
+        }
       }
-      
-      console.log(`Extrayendo datos de ${plat}...`);
-      results[plat] = await extractMetaData(cookieArray, urls[plat], plat);
     }
     
     res.status(200).json({
