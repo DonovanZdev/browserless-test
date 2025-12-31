@@ -1,0 +1,25 @@
+# Dependencias
+node_modules/
+package-lock.json
+yarn.lock
+
+# Archivos sensibles
+fb-cookies.json
+.env
+.env.local
+
+# Build
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+.vscode/
+.idea/
+
+# Vercel
+.vercel
