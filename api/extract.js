@@ -88,7 +88,7 @@ async function extractMetaData(cookies, url, platform) {
   return data;
 }
 
-async function extractTikTokData(tiktokCookies) {
+async function extractTikTokData(tiktokCookies, period = 28) {
   if (!tiktokCookies) {
     throw new Error("TikTok cookies requeridas");
   }
@@ -114,7 +114,8 @@ async function extractTikTokData(tiktokCookies) {
   
   await page.setCookie(...cookieArray);
 
-  const url = "https://www.tiktok.com/tiktokstudio?dateRange=%7B%22type%22%3A%22fixed%22%2C%22pastDay%22%3A7%7D&activeAnalyticsMetric=video_views";
+  // Construir URL con período dinámico
+  const url = `https://www.tiktok.com/tiktokstudio?dateRange=%7B%22type%22%3A%22fixed%22%2C%22pastDay%22%3A${period}%7D&activeAnalyticsMetric=video_views`;
   
   await page.goto(url, {
     waitUntil: 'networkidle2',
@@ -129,7 +130,7 @@ async function extractTikTokData(tiktokCookies) {
   await browser.close();
   
   // Usar OpenAI Vision para extraer datos
-  const prompt = "En esta screenshot de TikTok Studio, extrae EXACTAMENTE estos KPIs de la sección de 'Métricas clave': 1) Visualizaciones de videos (número principal en la primera tarjeta), 2) Visualizaciones de perfil (número en la segunda tarjeta), 3) Me gusta (número total de likes recibidos), 4) Comentarios (número total de comentarios), 5) Veces compartido (número total de shares), 6) Recompensas estimadas (número con $ si aplica). TAMBIÉN extrae el PERIODO que aparece en la esquina superior derecha (ej: 'Los últimos 7 días', 'Los últimos 28 días', etc). Responde SOLO en JSON sin explicaciones: {\"visualizaciones_videos\": \"XXX\", \"visualizaciones_perfil\": \"XXX\", \"me_gusta\": \"XXX\", \"comentarios\": \"XXX\", \"veces_compartido\": \"XXX\", \"recompensas_estimadas\": \"$XXX\", \"periodo\": \"Los últimos X días\"}";
+  const prompt = `En esta screenshot de TikTok Studio para el período de los últimos ${period} días, extrae EXACTAMENTE estos KPIs de la sección de 'Métricas clave': 1) Visualizaciones de videos, 2) Visualizaciones de perfil, 3) Me gusta, 4) Comentarios, 5) Veces compartido, 6) Recompensas estimadas. TAMBIÉN extrae el PERIODO exacto que aparece en la esquina superior derecha. Responde SOLO en JSON: {\"visualizaciones_videos\": \"XXX\", \"visualizaciones_perfil\": \"XXX\", \"me_gusta\": \"XXX\", \"comentarios\": \"XXX\", \"veces_compartido\": \"XXX\", \"recompensas_estimadas\": \"$XXX\", \"periodo\": \"Los últimos X días\"}`;
   
   const response = await openai.chat.completions.create({
     model: "gpt-4o",
@@ -174,7 +175,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const { cookies, platform, meta_cookies, tiktok_cookies } = req.body;
+    const { cookies, platform, meta_cookies, tiktok_cookies, tiktok_period } = req.body;
     
     // Soporte para cookies: meta_cookies para Facebook/Instagram, tiktok_cookies para TikTok
     const cookieMap = {
@@ -213,9 +214,9 @@ module.exports = async function handler(req, res) {
       let cookieArray = plat_cookies;
       if (typeof plat_cookies === 'object' && !Array.isArray(plat_cookies)) {
         if (plat === 'tiktok') {
-          // Para TikTok, usar como objeto directo para ScraperAPI
+          // Para TikTok, usar con período
           console.log(`Extrayendo datos de ${plat}...`);
-          results[plat] = await extractTikTokData(plat_cookies);
+          results[plat] = await extractTikTokData(plat_cookies, tiktok_period || 28);
         } else {
           // Para Facebook/Instagram, convertir a array
           cookieArray = Object.entries(plat_cookies).map(([name, value]) => ({
@@ -230,7 +231,7 @@ module.exports = async function handler(req, res) {
       } else {
         console.log(`Extrayendo datos de ${plat}...`);
         if (plat === 'tiktok') {
-          results[plat] = await extractTikTokData(plat_cookies);
+          results[plat] = await extractTikTokData(plat_cookies, tiktok_period || 28);
         } else {
           results[plat] = await extractMetaData(cookieArray, urls[plat], plat);
         }
