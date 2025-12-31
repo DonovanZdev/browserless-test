@@ -44,11 +44,11 @@ async function extractMetaData(cookies, url, platform) {
   // Usar OpenAI Vision para extraer datos
   let prompt;
   if (platform === 'instagram') {
-    prompt = "En esta screenshot de Instagram Business Suite, extrae EXACTAMENTE estos KPIs de la sección INFERIOR DERECHA que dice 'Seguidores': 1) Visualizaciones (número grande en mill. de la sección superior izquierda), 2) Alcance de Instagram (número grande en mill. de la sección superior derecha), 3) Interacciones con el contenido (número en mill. de la sección inferior izquierda), 4) Seguidores (número en mil. de la sección inferior derecha, debe ser un número pequeño como 6 mil, NO los 718,840 que aparecen bajo 'De seguidores'). Responde SOLO en JSON sin explicaciones: {\"visualizaciones\": \"XXX mill.\", \"alcance\": \"XXX mill.\", \"interacciones\": \"XXX mill.\", \"seguidores\": \"X.X mil\"}";
+    prompt = "En esta screenshot de Instagram Business Suite, extrae EXACTAMENTE estos KPIs de la sección INFERIOR DERECHA que dice 'Seguidores': 1) Visualizaciones (número grande en mill. de la sección superior izquierda), 2) Alcance de Instagram (número grande en mill. de la sección superior derecha), 3) Interacciones con el contenido (número en mill. de la sección inferior izquierda), 4) Seguidores (número en mil. de la sección inferior derecha, debe ser un número pequeño como 6 mil, NO los 718,840 que aparecen bajo 'De seguidores'). TAMBIÉN extrae el PERIODO que aparece debajo del título 'Rendimiento' (ej: '2 de diciembre de 2025 - 29 de diciembre de 2025'). Responde SOLO en JSON sin explicaciones: {\"visualizaciones\": \"XXX mill.\", \"alcance\": \"XXX mill.\", \"interacciones\": \"XXX mill.\", \"seguidores\": \"X.X mil\", \"periodo\": \"X de mes - X de mes\"}";
   } else if (platform === 'tiktok') {
-    prompt = "En esta screenshot de TikTok Studio, extrae EXACTAMENTE estos KPIs de la sección de 'Métricas clave': 1) Visualizaciones de videos (número principal en la primera tarjeta), 2) Visualizaciones de perfil (número en la segunda tarjeta), 3) Me gusta (número total de likes recibidos), 4) Comentarios (número total de comentarios), 5) Veces compartido (número total de shares), 6) Recompensas estimadas (número con $ si aplica). Responde SOLO en JSON sin explicaciones: {\"visualizaciones_videos\": \"XXX\", \"visualizaciones_perfil\": \"XXX\", \"me_gusta\": \"XXX\", \"comentarios\": \"XXX\", \"veces_compartido\": \"XXX\", \"recompensas_estimadas\": \"$XXX\"}";
+    prompt = "En esta screenshot de TikTok Studio, extrae EXACTAMENTE estos KPIs de la sección de 'Métricas clave': 1) Visualizaciones de videos (número principal en la primera tarjeta), 2) Visualizaciones de perfil (número en la segunda tarjeta), 3) Me gusta (número total de likes recibidos), 4) Comentarios (número total de comentarios), 5) Veces compartido (número total de shares), 6) Recompensas estimadas (número con $ si aplica). TAMBIÉN extrae el PERIODO exacto que aparece en la esquina superior derecha. Responde SOLO en JSON sin explicaciones: {\"visualizaciones_videos\": \"XXX\", \"visualizaciones_perfil\": \"XXX\", \"me_gusta\": \"XXX\", \"comentarios\": \"XXX\", \"veces_compartido\": \"XXX\", \"recompensas_estimadas\": \"$XXX\", \"periodo\": \"Los últimos X días\"}";
   } else {
-    prompt = "En esta screenshot de Facebook Business Suite, extrae EXACTAMENTE estos KPIs: 1) Visualizaciones (mill.), 2) Interacciones con el contenido (mill.), 3) Visitas de Facebook (mill.), 4) Seguidores (mil). Responde SOLO en JSON sin explicaciones: {\"visualizaciones\": \"XXX mill.\", \"interacciones\": \"XXX mill.\", \"visitas\": \"XXX mill.\", \"seguidores\": \"XXX mil\"}";
+    prompt = "En esta screenshot de Facebook Business Suite, extrae EXACTAMENTE estos KPIs: 1) Visualizaciones (mill.), 2) Interacciones con el contenido (mill.), 3) Visitas de Facebook (mill.), 4) Seguidores (mil). TAMBIÉN extrae el PERIODO que aparece debajo del título 'Rendimiento' (ej: '2 de diciembre de 2025 - 29 de diciembre de 2025'). Responde SOLO en JSON sin explicaciones: {\"visualizaciones\": \"XXX mill.\", \"interacciones\": \"XXX mill.\", \"visitas\": \"XXX mill.\", \"seguidores\": \"XXX mil\", \"periodo\": \"X de mes - X de mes\"}";
   }
   
   const response = await openai.chat.completions.create({
@@ -88,7 +88,7 @@ async function extractMetaData(cookies, url, platform) {
   return data;
 }
 
-async function extractTikTokData(tiktokCookies, period = 28) {
+async function extractTikTokData(tiktokCookies, period = 7) {
   if (!tiktokCookies) {
     throw new Error("TikTok cookies requeridas");
   }
