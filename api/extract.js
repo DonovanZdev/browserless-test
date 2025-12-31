@@ -6,7 +6,7 @@ async function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function extractMetaData(cookies, url) {
+async function extractMetaData(cookies, url, platform) {
   const browser = await puppeteer.connect({
     browserWSEndpoint: `wss://production-sfo.browserless.io?token=${TOKEN}`,
   });
@@ -32,24 +32,40 @@ async function extractMetaData(cookies, url) {
   });
   await sleep(2000);
 
-  const rendimientoData = await page.evaluate(() => {
+  const rendimientoData = await page.evaluate((plat) => {
     const data = {};
     const allText = document.body.innerText;
     
-    const vizMatch = allText.match(/Visualizaciones[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
-    if (vizMatch) data.visualizaciones = vizMatch[1];
-    
-    const intMatch = allText.match(/Interacciones con el contenido[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
-    if (intMatch) data.interacciones = intMatch[1];
-    
-    const visitMatch = allText.match(/Visitas de Facebook[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
-    if (visitMatch) data.visitas = visitMatch[1];
-    
-    const followMatch = allText.match(/Seguidores[\s\S]*?(\d+[\s,]*\d*\s*mil[l]?\.?)/);
-    if (followMatch) data.seguimientos = followMatch[1];
+    if (plat === 'instagram') {
+      // Para Instagram
+      const vizMatch = allText.match(/Visualizaciones[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
+      if (vizMatch) data.visualizaciones = vizMatch[1];
+      
+      const alcanceMatch = allText.match(/Alcance de Instagram[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
+      if (alcanceMatch) data.alcance = alcanceMatch[1];
+      
+      const intMatch = allText.match(/Interacciones con el contenido[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
+      if (intMatch) data.interacciones = intMatch[1];
+      
+      const followMatch = allText.match(/Seguidores[\s\S]*?(\d+[\s,]*\d*\s*mil[l]?\.?)/);
+      if (followMatch) data.seguidores = followMatch[1];
+    } else {
+      // Para Facebook
+      const vizMatch = allText.match(/Visualizaciones[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
+      if (vizMatch) data.visualizaciones = vizMatch[1];
+      
+      const intMatch = allText.match(/Interacciones con el contenido[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
+      if (intMatch) data.interacciones = intMatch[1];
+      
+      const visitMatch = allText.match(/Visitas de Facebook[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
+      if (visitMatch) data.visitas = visitMatch[1];
+      
+      const followMatch = allText.match(/Seguidores[\s\S]*?(\d+[\s,]*\d*\s*mil[l]?\.?)/);
+      if (followMatch) data.seguidores = followMatch[1];
+    }
     
     return data;
-  });
+  }, platform);
   
   await browser.close();
   return rendimientoData;
@@ -83,7 +99,7 @@ module.exports = async function handler(req, res) {
     
     for (const plat of platformsToExtract) {
       console.log(`Extrayendo datos de ${plat}...`);
-      results[plat] = await extractMetaData(cookies, urls[plat]);
+      results[plat] = await extractMetaData(cookies, urls[plat], plat);
     }
     
     res.status(200).json({
