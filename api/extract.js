@@ -47,8 +47,23 @@ async function extractMetaData(cookies, url, platform) {
       const intMatch = allText.match(/Interacciones con el contenido[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
       if (intMatch) data.interacciones = intMatch[1];
       
-      const followMatch = allText.match(/Seguidores[\s\S]*?(\d+[\s,]*\d*\s*mil[l]?\.?)/);
-      if (followMatch) data.seguidores = followMatch[1];
+      // Para Instagram, buscar "Seguidores" pero evitar "Personas que dejaron"
+      const seguidoresMatch = allText.match(/^Seguidores[\s\S]*?(\d+[\s,]*\d*\s*mil[l]?\.?)/m);
+      if (seguidoresMatch) {
+        data.seguidores = seguidoresMatch[1];
+      } else {
+        // Alternativa: buscar todos los números con "mil" en la sección de Seguidores
+        const lines = allText.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].includes('Seguidores') && !lines[i].includes('Personas que dejaron')) {
+            const match = lines[i].match(/(\d+[\s,]*\d*\s*mil[l]?)/);
+            if (match) {
+              data.seguidores = match[1];
+              break;
+            }
+          }
+        }
+      }
     } else {
       // Para Facebook
       const vizMatch = allText.match(/Visualizaciones[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
