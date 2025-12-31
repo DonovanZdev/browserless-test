@@ -1,6 +1,10 @@
 const puppeteer = require("puppeteer-core");
+const { OpenAI } = require("openai");
 
 const TOKEN = "2ThMQelUWHfBWdM8f1e02d135a315e02e44d27e13e5020198";
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+
+const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
 async function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -32,94 +36,50 @@ async function extractMetaData(cookies, url, platform) {
   });
   await sleep(2000);
 
-  const rendimientoData = await page.evaluate((plat) => {
-    const data = {};
-    
-    if (plat === 'instagram') {
-      // Para Instagram, buscar por estructura HTML más específica
-      
-      // Visualizaciones
-      const vizSection = Array.from(document.querySelectorAll('*')).find(el => 
-        el.textContent?.includes('Visualizaciones') && el.textContent?.includes('mill.')
-      );
-      if (vizSection) {
-        const vizMatch = vizSection.textContent.match(/Visualizaciones[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
-        if (vizMatch) data.visualizaciones = vizMatch[1];
-      }
-      
-      // Alcance de Instagram
-      const alcanceSection = Array.from(document.querySelectorAll('*')).find(el =>
-        el.textContent?.includes('Alcance de Instagram') && el.textContent?.includes('mill.')
-      );
-      if (alcanceSection) {
-        const alcanceMatch = alcanceSection.textContent.match(/Alcance de Instagram[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
-        if (alcanceMatch) data.alcance = alcanceMatch[1];
-      }
-      
-      // Interacciones
-      const intSection = Array.from(document.querySelectorAll('*')).find(el =>
-        el.textContent?.includes('Interacciones con el contenido') && el.textContent?.includes('mill.')
-      );
-      if (intSection) {
-        const intMatch = intSection.textContent.match(/Interacciones con el contenido[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
-        if (intMatch) data.interacciones = intMatch[1];
-      }
-      
-      // Seguidores - buscar específicamente el número grande en la sección de Seguidores
-      const allDivs = document.querySelectorAll('[class*="insight"], [class*="stat"], div');
-      for (let div of allDivs) {
-        if (div.textContent?.includes('Seguidores') && 
-            !div.textContent?.includes('Personas que dejaron')) {
-          // Buscar el número más grande en mil dentro de esta sección
-          const matches = div.textContent.match(/(\d+[\s,]*\d*)\s*mil(?![\.,])/g);
-          if (matches && matches.length > 0) {
-            // Tomar el primer match que no sea muy pequeño
-            data.seguidores = matches[0];
-            break;
-          }
-        }
-      }
-    } else {
-      // Para Facebook
-      const vizSection = Array.from(document.querySelectorAll('*')).find(el =>
-        el.textContent?.includes('Visualizaciones') && el.textContent?.includes('mill.')
-      );
-      if (vizSection) {
-        const vizMatch = vizSection.textContent.match(/Visualizaciones[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
-        if (vizMatch) data.visualizaciones = vizMatch[1];
-      }
-      
-      const intSection = Array.from(document.querySelectorAll('*')).find(el =>
-        el.textContent?.includes('Interacciones con el contenido') && el.textContent?.includes('mill.')
-      );
-      if (intSection) {
-        const intMatch = intSection.textContent.match(/Interacciones con el contenido[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
-        if (intMatch) data.interacciones = intMatch[1];
-      }
-      
-      const visitSection = Array.from(document.querySelectorAll('*')).find(el =>
-        el.textContent?.includes('Visitas de Facebook') && el.textContent?.includes('mill.')
-      );
-      if (visitSection) {
-        const visitMatch = visitSection.textContent.match(/Visitas de Facebook[\s\S]*?(\d+[\.,]\d+\s*mill\.?)/);
-        if (visitMatch) data.visitas = visitMatch[1];
-      }
-      
-      const followSection = Array.from(document.querySelectorAll('*')).find(el =>
-        el.textContent?.includes('Seguidores') && el.textContent?.includes('mil') &&
-        !el.textContent?.includes('Personas que dejaron')
-      );
-      if (followSection) {
-        const followMatch = followSection.textContent.match(/(\d+[\s,]*\d*)\s*mil/);
-        if (followMatch) data.seguidores = followMatch[1];
-      }
-    }
-    
-    return data;
-  }, platform);
+  // Tomar screenshot en base64
+  const screenshot = await page.screenshot({ encoding: 'base64' });
   
   await browser.close();
-  return rendimientoData;
+  
+  // Usar OpenAI Vision para extraer datos
+  const prompt = platform === 'instagram' 
+    ? "En esta screenshot de Instagram Business Suite, extrae exactamente estos números: Visualizaciones (mill.), Alcance de Instagram (mill.), Interacciones con el contenido (mill.), y Seguidores. Responde en JSON: {\"visualizaciones\": \"XXX mill.\", \"alcance\": \"XXX mill.\", \"interacciones\": \"XXX mill.\", \"seguidores\": \"XXX mil\"}"
+    : "En esta screenshot de Facebook Business Suite, extrae exactamente estos números: Visualizaciones (mill.), Interacciones con el contenido (mill.), Visitas de Facebook (mill.), y Seguidores. Responde en JSON: {\"visualizaciones\": \"XXX mill.\", \"interacciones\": \"XXX mill.\", \"visitas\": \"XXX mill.\", \"seguidores\": \"XXX mil\"}";
+  
+  const response = await openai.vision.completions.create({
+    model: "gpt-4-vision-preview",
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "image_url",
+            image_url: {
+              url: `data:image/png;base64,${screenshot}`,
+            },
+          },
+          {
+            type: "text",
+            text: prompt,
+          },
+        ],
+      },
+    ],
+  });
+
+  // Parsear respuesta de OpenAI
+  let data = {};
+  try {
+    const content = response.choices[0].message.content;
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      data = JSON.parse(jsonMatch[0]);
+    }
+  } catch (e) {
+    console.error("Error parsing OpenAI response:", e);
+  }
+  
+  return data;
 }
 
 module.exports = async function handler(req, res) {
