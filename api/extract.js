@@ -6,7 +6,7 @@ async function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function extractMetaData(cookies) {
+async function extractMetaData(cookies, url) {
   const browser = await puppeteer.connect({
     browserWSEndpoint: `wss://production-sfo.browserless.io?token=${TOKEN}`,
   });
@@ -16,7 +16,7 @@ async function extractMetaData(cookies) {
   await page.setViewport({ width: 1920, height: 1080 });
   await page.setCookie(...cookies);
 
-  await page.goto("https://business.facebook.com/latest/insights/overview?business_id=176166689688823&asset_id=8555156748&time_range=%257B%2522end%2522%253A%25222025-12-03%2522%252C%2522start%2522%253A%25222025-12-03%2522%257D", {
+  await page.goto(url, {
     waitUntil: "networkidle2",
   });
 
@@ -61,17 +61,34 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const { cookies } = req.body;
+    const { cookies, platform } = req.body;
     
     if (!cookies || !Array.isArray(cookies)) {
       return res.status(400).json({ error: "Se requiere un array de cookies" });
     }
     
-    const data = await extractMetaData(cookies);
+    // URLs base para Facebook e Instagram
+    const urls = {
+      facebook: "https://business.facebook.com/latest/insights/overview?business_id=176166689688823&asset_id=8555156748&time_range=%257B%2522end%2522%253A%25222025-12-03%2522%252C%2522start%2522%253A%25222025-12-03%2522%257D",
+      instagram: "https://business.facebook.com/latest/insights/overview?business_id=176166689688823&asset_id=8555156748&time_range=%257B%2522end%2522%253A%25222025-12-03%2522%252C%2522start%2522%253A%25222025-12-03%2522%257D&platform=Instagram"
+    };
+    
+    // Determinar qué plataformas extraer
+    let platformsToExtract = ['facebook', 'instagram'];
+    if (platform && (platform === 'facebook' || platform === 'instagram')) {
+      platformsToExtract = [platform];
+    }
+    
+    const results = {};
+    
+    for (const plat of platformsToExtract) {
+      console.log(`Extrayendo datos de ${plat}...`);
+      results[plat] = await extractMetaData(cookies, urls[plat]);
+    }
     
     res.status(200).json({
       success: true,
-      data: data
+      data: results
     });
   } catch (error) {
     console.error("Error:", error);
