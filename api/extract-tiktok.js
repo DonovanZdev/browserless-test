@@ -101,30 +101,31 @@ async function extractTikTokMetric(page, metricConfig, period, metricsData, metr
   try {
     console.log(`\n📍 Extrayendo: ${metricConfig.name} (índice: ${metricIndex})`);
     
-    // PASO 1: Encontrar y hacer click en la tarjeta de la métrica
-    // Usar page.$eval para encontrar el elemento y hacer click
-    try {
-      await page.evaluate((label) => {
-        // Buscar el elemento que contiene el label
-        const elements = Array.from(document.querySelectorAll('*'))
-          .filter(el => el.textContent.includes(label));
-        
-        if (elements.length > 0) {
-          // Tomar el más pequeño (más específico)
-          const target = elements.reduce((a, b) => 
-            a.textContent.length < b.textContent.length ? a : b
-          );
-          // Hacer click usando Puppeteer desde el contexto del browser
-          target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          target.click();
-        }
-      }, metricConfig.label);
-      
-      console.log(`  ✅ Click ejecutado en tarjeta`);
-      await sleep(1000); // Esperar más tiempo para la actualización
-    } catch (e) {
-      console.log(`  ⚠️  Error al hacer click: ${e.message}`);
+    // PASO 1: Navegar a la URL del metric específico cambiando el parámetro activeAnalyticsMetric
+    // activeAnalyticsMetric puede ser: views, likes, comments, shares, videoviews
+    let metricParam = 'views'; // Por defecto
+    
+    if (metricConfig.name === 'visualizaciones_videos') {
+      metricParam = 'videoviews';
+    } else if (metricConfig.name === 'visualizaciones_perfil') {
+      metricParam = 'views';
+    } else if (metricConfig.name === 'me_gusta') {
+      metricParam = 'likes';
+    } else if (metricConfig.name === 'comentarios') {
+      metricParam = 'comments';
+    } else if (metricConfig.name === 'veces_compartido') {
+      metricParam = 'shares';
     }
+    
+    const metricUrl = `https://www.tiktok.com/tiktokstudio?dateRange=%7B%22type%22%3A%22fixed%22%2C%22pastDay%22%3A${period}%7D&activeAnalyticsMetric=${metricParam}`;
+    
+    console.log(`  🔗 Navegando a ${metricParam}...`);
+    await page.goto(metricUrl, {
+      waitUntil: 'networkidle1',
+      timeout: 30000
+    });
+    
+    await sleep(1000); // Esperar a que se renderice el gráfico
 
     // PASO 2: Extraer el total desde el DOM
     const domData = await page.evaluate((label) => {
