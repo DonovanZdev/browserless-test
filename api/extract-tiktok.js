@@ -94,9 +94,6 @@ function parseCookies(cookies, domain = '.tiktok.com') {
 
 /**
  * Extrae una métrica individual de TikTok
- */
-/**
- * Extrae una métrica individual de TikTok
  * Estrategia: Extraer el número total directamente de la tarjeta de métrica
  * Sin necesidad de clickear en el gráfico
  */
