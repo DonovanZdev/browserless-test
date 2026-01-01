@@ -108,185 +108,181 @@ async function extractTikTokDataHistorical(tiktokCookies, period = 28) {
 
   console.log('📈 Extrayendo valores históricos de cada métrica...\n');
 
-  for (const metricConfig of metrics) {
-    try {
-      // Hacer click en la métrica para cambiar el gráfico
-      await page.evaluate((label) => {
-        // Buscar el botón de la métrica por texto
-        const buttons = Array.from(document.querySelectorAll('button, [role="button"], div')).filter(el => {
-          return el.textContent.includes(label);
-        });
-        
-        if (buttons.length > 0) {
-          buttons[0].click();
-        }
-      }, metricConfig.label);
-
-      await sleep(2000);
-
-      // Extraer todos los puntos del gráfico
-      let historicalData = await page.evaluate(() => {
-        const result = {
-          dailyValues: [],
-          dates: []
-        };
-
-        // Buscar todos los círculos del gráfico (puntos de datos)
-        const circles = document.querySelectorAll('circle[role="presentation"], circle[data-testid], svg circle');
-        
-        if (circles.length > 0) {
-          const values = [];
-          
-          // Para cada círculo, extraer data attributes
-          circles.forEach((circle) => {
-            const dataValue = circle.getAttribute('data-value') || 
-                             circle.getAttribute('aria-label') ||
-                             circle.parentElement?.getAttribute('data-value');
-            
-            if (dataValue) {
-              const numMatch = dataValue.match(/\d+/);
-              if (numMatch) {
-                values.push(parseInt(numMatch[0]));
-              }
-            }
-          });
-          
-          result.dailyValues = values;
-        }
-
-        // Si no hay puntos visibles, buscar en rects
-        if (result.dailyValues.length === 0) {
-          const rects = document.querySelectorAll('rect[data-testid*="chart"], rect[data-value]');
-          rects.forEach(rect => {
-            const dataValue = rect.getAttribute('data-value');
-            if (dataValue) {
-              const numMatch = dataValue.match(/\d+/);
-              if (numMatch) {
-                result.dailyValues.push(parseInt(numMatch[0]));
-              }
-            }
-          });
-        }
-
-        // Extraer fechas del eje X
-        const xAxisLabels = document.querySelectorAll('[class*="x-axis"] text, [class*="axis"] text, svg text');
-        const dates = new Set();
-        xAxisLabels.forEach(label => {
-          const dateText = label.textContent.trim();
-          if (dateText.match(/\d+\s+de\s+\w+|^\d{1,2}$/)) {
-            dates.add(dateText);
-          }
-        });
-        result.dates = Array.from(dates);
-
-        return result;
-      });
-
-      // Si tenemos pocos datos, intentar Vision como fallback
-      if (historicalData.dailyValues.length < 10) {
-        console.log(`  ⚠️  Pocos datos en DOM (${historicalData.dailyValues.length}), usando Vision...`);
-        
-        const screenshot = await page.screenshot({ encoding: 'base64' });
-        
-        const prompt = `Extrae TODOS los valores diarios del gráfico visible para TikTok Studio ${metricConfig.label}. 
-        
-El gráfico muestra hasta ${period} días de datos. Cuando hagas hover sobre cada punto, aparece el valor numérico.
-
-Responde SOLO con un array JSON de números en orden cronológico (del más antiguo al más reciente):
-[numero1, numero2, numero3, ...]
-
-Si no puedes extraer todos, extrae al menos los que sean visibles. Incluye TODOS los puntos del gráfico.`;
-        
-        const response = await openai.chat.completions.create({
-          model: "gpt-4o",
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: `data:image/png;base64,${screenshot}`,
-                  },
-                },
-                {
-                  type: "text",
-                  text: prompt,
-                },
-              ],
-            },
-          ],
-          max_tokens: 500,
-        });
-
-        try {
-          const content = response.choices[0].message.content;
-          const arrayMatch = content.match(/\[\s*\d+[\s\d,]*\]/);
-          if (arrayMatch) {
-            historicalData.dailyValues = JSON.parse(arrayMatch[0]);
-          }
-        } catch (e) {
-          console.error(`  Error Vision para ${metricConfig.name}:`, e.message);
-        }
-      }
-
-      // Armar datos históricos
-      if (historicalData.dailyValues.length > 0) {
-        const historyArray = [];
-        const today = new Date();
-        
-        for (let i = 0; i < historicalData.dailyValues.length && i < period; i++) {
-          const daysAgo = period - historicalData.dailyValues.length + i;
-          const date = new Date(today);
-          date.setDate(date.getDate() - daysAgo);
-          
-          const dayNum = date.getDate();
-          const monthNum = date.getMonth();
-          const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-          const fechaStr = `${dayNum} de ${months[monthNum]}`;
-          
-          historyArray.push({
-            fecha: fechaStr,
-            valor: historicalData.dailyValues[i].toString(),
-            timestamp: Math.floor(date.getTime() / 1000),
-            date: date.toISOString().split('T')[0]
-          });
-        }
-
-        // Calcular total (suma de todos los días)
-        const totalValue = historyArray.reduce((sum, item) => {
-          return sum + (parseInt(item.valor) || 0);
-        }, 0).toString();
-
-        metricsData[metricConfig.name] = {
-          totalValue: totalValue,
-          historicalData: historyArray,
-          totalPoints: historyArray.length
-        };
-
-        console.log(`  ✅ ${metricConfig.name}: ${historyArray.length} puntos | Total: ${totalValue}`);
-      } else {
-        metricsData[metricConfig.name] = {
-          totalValue: '0',
-          historicalData: [],
-          totalPoints: 0
-        };
-
-        console.log(`  ⚠️  ${metricConfig.name}: Sin datos`);
-      }
-    } catch (e) {
-      console.error(`  ❌ Error ${metricConfig.name}:`, e.message);
-      metricsData[metricConfig.name] = {
-        totalValue: '0',
-        historicalData: [],
-        totalPoints: 0
-      };
-    }
+  // Procesar métricas en paralelo (máximo 2 simultáneamente para no sobrecargar Browserless)
+  const batchSize = 2;
+  for (let i = 0; i < metrics.length; i += batchSize) {
+    const batch = metrics.slice(i, i + batchSize);
+    
+    await Promise.all(batch.map(metricConfig => extractTikTokMetric(page, metricConfig, period, metricsData)));
   }
 
   await browser.close();
   
   return metricsData;
+}
+
+/**
+ * Extrae una métrica individual de TikTok
+ */
+async function extractTikTokMetric(page, metricConfig, period, metricsData) {
+  try {
+    // Hacer click en la métrica para cambiar el gráfico
+    await page.evaluate((label) => {
+      // Buscar el botón de la métrica por texto
+      const buttons = Array.from(document.querySelectorAll('button, [role="button"], div')).filter(el => {
+        return el.textContent.includes(label);
+      });
+      
+      if (buttons.length > 0) {
+        buttons[0].click();
+      }
+    }, metricConfig.label);
+
+    await sleep(1000);  // Reducido de 2000 a 1000ms
+
+    // Extraer todos los puntos del gráfico
+    let historicalData = await page.evaluate(() => {
+      const result = {
+        dailyValues: [],
+        dates: []
+      };
+
+      // Buscar todos los círculos del gráfico (puntos de datos)
+      const circles = document.querySelectorAll('circle[role="presentation"], circle[data-testid], svg circle');
+      
+      if (circles.length > 0) {
+        const values = [];
+        
+        // Para cada círculo, extraer data attributes
+        circles.forEach((circle) => {
+          const dataValue = circle.getAttribute('data-value') || 
+                           circle.getAttribute('aria-label') ||
+                           circle.parentElement?.getAttribute('data-value');
+          
+          if (dataValue) {
+            const numMatch = dataValue.match(/\d+/);
+            if (numMatch) {
+              values.push(parseInt(numMatch[0]));
+            }
+          }
+        });
+        
+        result.dailyValues = values;
+      }
+
+      // Si no hay puntos visibles, buscar en rects
+      if (result.dailyValues.length === 0) {
+        const rects = document.querySelectorAll('rect[data-testid*="chart"], rect[data-value]');
+        rects.forEach(rect => {
+          const dataValue = rect.getAttribute('data-value');
+          if (dataValue) {
+            const numMatch = dataValue.match(/\d+/);
+            if (numMatch) {
+              result.dailyValues.push(parseInt(numMatch[0]));
+            }
+          }
+        });
+      }
+
+      return result;
+    });
+
+    // Si tenemos pocos datos, intentar Vision como fallback
+    if (historicalData.dailyValues.length < 10) {
+      console.log(`  ⚠️  Pocos datos en DOM (${historicalData.dailyValues.length}), usando Vision...`);
+      
+      const screenshot = await page.screenshot({ encoding: 'base64' });
+      
+      const prompt = `Extrae TODOS los valores diarios del gráfico visible para TikTok Studio ${metricConfig.label}. 
+        
+El gráfico muestra hasta ${period} días de datos. Responde SOLO con un array JSON:
+[numero1, numero2, numero3, ...]`;
+      
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:image/png;base64,${screenshot}`,
+                },
+              },
+              {
+                type: "text",
+                text: prompt,
+              },
+            ],
+          },
+        ],
+        max_tokens: 300,
+      });
+
+      try {
+        const content = response.choices[0].message.content;
+        const arrayMatch = content.match(/\[\s*\d+[\s\d,]*\]/);
+        if (arrayMatch) {
+          historicalData.dailyValues = JSON.parse(arrayMatch[0]);
+        }
+      } catch (e) {
+        console.error(`  Error Vision para ${metricConfig.name}:`, e.message);
+      }
+    }
+
+    // Armar datos históricos
+    if (historicalData.dailyValues.length > 0) {
+      const historyArray = [];
+      const today = new Date();
+      
+      for (let i = 0; i < historicalData.dailyValues.length && i < period; i++) {
+        const daysAgo = period - historicalData.dailyValues.length + i;
+        const date = new Date(today);
+        date.setDate(date.getDate() - daysAgo);
+        
+        const dayNum = date.getDate();
+        const monthNum = date.getMonth();
+        const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+        const fechaStr = `${dayNum} de ${months[monthNum]}`;
+        
+        historyArray.push({
+          fecha: fechaStr,
+          valor: historicalData.dailyValues[i].toString(),
+          timestamp: Math.floor(date.getTime() / 1000),
+          date: date.toISOString().split('T')[0]
+        });
+      }
+
+      // Calcular total (suma de todos los días)
+      const totalValue = historyArray.reduce((sum, item) => {
+        return sum + (parseInt(item.valor) || 0);
+      }, 0).toString();
+
+      metricsData[metricConfig.name] = {
+        totalValue: totalValue,
+        historicalData: historyArray,
+        totalPoints: historyArray.length
+      };
+
+      console.log(`  ✅ ${metricConfig.name}: ${historyArray.length} puntos | Total: ${totalValue}`);
+    } else {
+      metricsData[metricConfig.name] = {
+        totalValue: '0',
+        historicalData: [],
+        totalPoints: 0
+      };
+
+      console.log(`  ⚠️  ${metricConfig.name}: Sin datos`);
+    }
+  } catch (e) {
+    console.error(`  ❌ Error ${metricConfig.name}:`, e.message);
+    metricsData[metricConfig.name] = {
+      totalValue: '0',
+      historicalData: [],
+      totalPoints: 0
+    };
+  }
 }
 
 /**
