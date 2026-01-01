@@ -11,6 +11,10 @@ async function sleep(ms) {
 
 /**
  * Parsea cookies de cualquier formato (string JSON, objeto, array)
+ * Soporta dos formatos principales:
+ * 1. Array de objetos: [{name: "x", value: "y"}, ...]
+ * 2. Objeto plano con propiedades: {"cookieName": "value", ...}
+ * 3. Array con objeto plano: [{"cookieName": "value", ...}]
  */
 function parseCookies(cookies, domain = '.tiktok.com') {
   if (!cookies) return [];
@@ -27,23 +31,40 @@ function parseCookies(cookies, domain = '.tiktok.com') {
   let cookieArray = [];
   
   if (Array.isArray(cookies)) {
-    cookieArray = cookies
-      .filter(cookie => cookie && cookie.name && cookie.value)
-      .map(cookie => {
-        const processed = {
-          name: String(cookie.name),
-          value: String(cookie.value),
-          domain: cookie.domain || domain,
-          path: cookie.path || '/'
-        };
-        
-        if (cookie.secure !== undefined) processed.secure = Boolean(cookie.secure);
-        if (cookie.httpOnly !== undefined) processed.httpOnly = Boolean(cookie.httpOnly);
-        if (cookie.expires !== undefined) processed.expires = Number(cookie.expires);
-        if (cookie.sameSite) processed.sameSite = String(cookie.sameSite);
-        
-        return processed;
-      });
+    // Si el array contiene un único objeto con propiedades (formato antiguo)
+    if (cookies.length === 1 && typeof cookies[0] === 'object' && !cookies[0].name) {
+      // Convertir objeto plano a array de cookies
+      const cookieObj = cookies[0];
+      cookieArray = Object.entries(cookieObj)
+        .filter(([name, value]) => name && value)
+        .map(([name, value]) => ({
+          name: String(name),
+          value: String(value),
+          domain,
+          path: '/',
+          secure: true,
+          httpOnly: true
+        }));
+    } else {
+      // Array normal de cookies [{name, value}, ...]
+      cookieArray = cookies
+        .filter(cookie => cookie && cookie.name && cookie.value)
+        .map(cookie => {
+          const processed = {
+            name: String(cookie.name),
+            value: String(cookie.value),
+            domain: cookie.domain || domain,
+            path: cookie.path || '/'
+          };
+          
+          if (cookie.secure !== undefined) processed.secure = Boolean(cookie.secure);
+          if (cookie.httpOnly !== undefined) processed.httpOnly = Boolean(cookie.httpOnly);
+          if (cookie.expires !== undefined) processed.expires = Number(cookie.expires);
+          if (cookie.sameSite) processed.sameSite = String(cookie.sameSite);
+          
+          return processed;
+        });
+    }
   } 
   else if (typeof cookies === 'object') {
     cookieArray = Object.entries(cookies)
@@ -52,7 +73,9 @@ function parseCookies(cookies, domain = '.tiktok.com') {
         name: String(name),
         value: String(value),
         domain,
-        path: '/'
+        path: '/',
+        secure: true,
+        httpOnly: true
       }));
   }
 
