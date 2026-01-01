@@ -27,37 +27,22 @@ function parseCookies(cookies, domain = '.facebook.com') {
     }
   }
   
-  let cookieArray = [];
-  
-  // Si es array, procesarlo
+  // Si es array, retornarlo tal cual
   if (Array.isArray(cookies)) {
-    cookieArray = cookies.map(cookie => ({
-      name: cookie.name,
-      value: cookie.value,
-      domain: cookie.domain || domain,
-      path: cookie.path || '/'
-    }));
-  } 
-  // Si es objeto, convertir a array
-  else if (typeof cookies === 'object') {
-    cookieArray = Object.entries(cookies).map(([name, value]) => ({
+    return cookies;
+  }
+  
+  // Si es objeto, convertir a array de cookies
+  if (typeof cookies === 'object') {
+    return Object.entries(cookies).map(([name, value]) => ({
       name,
-      value: String(value), // Asegurar que es string
+      value: String(value),
       domain,
       path: '/'
     }));
   }
   
-  // Filtrar cookies inválidas (deben tener name y value)
-  const validCookies = cookieArray.filter(cookie => {
-    if (!cookie.name || !cookie.value) {
-      console.warn(`Cookie inválida ignorada: ${cookie.name || 'sin-name'}`);
-      return false;
-    }
-    return true;
-  });
-  
-  return validCookies;
+  return [];
 }
 
 /**
@@ -77,17 +62,7 @@ async function extractTikTokData(tiktokCookies, period = 28) {
   
   // Parsear cookies (maneja strings JSON, objetos y arrays)
   const cookieArray = parseCookies(tiktokCookies, '.tiktok.com');
-  
-  if (cookieArray.length === 0) {
-    throw new Error('No valid cookies found for TikTok');
-  }
-  
-  try {
-    await page.setCookie(...cookieArray);
-  } catch (e) {
-    console.error('Error setting TikTok cookies:', e.message);
-    throw e;
-  }
+  await page.setCookie(...cookieArray);
 
   // Construir URL con período dinámico
   const url = `https://www.tiktok.com/tiktokstudio?dateRange=%7B%22type%22%3A%22fixed%22%2C%22pastDay%22%3A${period}%7D&activeAnalyticsMetric=shares`;
@@ -157,17 +132,7 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
   
   // Parsear cookies (maneja strings JSON, objetos y arrays)
   const cookieArray = parseCookies(cookies, '.facebook.com');
-  
-  if (cookieArray.length === 0) {
-    throw new Error(`No valid cookies found for ${platform}`);
-  }
-  
-  try {
-    await page.setCookie(...cookieArray);
-  } catch (e) {
-    console.error(`Error setting ${platform} cookies:`, e.message);
-    throw e;
-  }
+  await page.setCookie(...cookieArray);
 
   const timeRange = `%2522${period}%2522`;
   const url = `https://business.facebook.com/latest/insights/results?business_id=${businessId}&asset_id=${assetId}&time_range=${timeRange}&platform=${platform}&audience_tab=demographics`;
