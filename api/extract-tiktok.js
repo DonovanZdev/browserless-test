@@ -95,44 +95,109 @@ function parseCookies(cookies, domain = '.tiktok.com') {
 /**
  * Extrae una métrica individual de TikTok
  */
+/**
+ * Extrae una métrica individual de TikTok
+ * Estrategia: Extraer el número total directamente de la tarjeta de métrica
+ * Sin necesidad de clickear en el gráfico
+ */
 async function extractTikTokMetric(page, metricConfig, period, metricsData, metricIndex) {
   try {
     console.log(`\n📍 Extrayendo: ${metricConfig.name} (índice: ${metricIndex})`);
     
-    // Click en la tarjeta de métrica usando índice
-    const clickResult = await page.evaluate((index) => {
-      // Encontrar todas las tarjetas de métricas (divs con números grandes)
-      const metricCards = document.querySelectorAll('[role="tablist"] [role="tab"], .metric-card, [data-testid*="metric"], div[class*="metric"]');
+    // Extraer el número total de la tarjeta de métrica
+    const metricData = await page.evaluate((label, index) => {
+      // Estrategia 1: Buscar por label exacto (nombre de la métrica)
+      const allDivs = Array.from(document.querySelectorAll('div, span'));
       
-      console.log(`Tarjetas encontradas: ${metricCards.length}`);
+      let totalValue = null;
+      let nextNumbers = [];
       
-      if (metricCards.length > index) {
-        console.log(`Click en tarjeta ${index}`);
-        metricCards[index].click();
-        return { success: true, method: 'by-index' };
+      // Buscar el elemento que contiene el label
+      for (let el of allDivs) {
+        if (el.textContent.trim() === label || el.textContent.trim().includes(label)) {
+          // Subir en el árbol para encontrar la tarjeta padre
+          let parent = el;
+          for (let i = 0; i < 5; i++) {
+            if (parent.parentElement) {
+              parent = parent.parentElement;
+              // Buscar números grandes en esta tarjeta
+              const numbers = Array.from(parent.querySelectorAll('*'))
+                .map(e => ({
+                  num: parseInt(e.textContent?.match(/^\d+$/)?.[0] || 0),
+                  text: e.textContent?.trim()
+                }))
+                .filter(x => x.num > 0 && x.text.match(/^\d+$/));
+              
+              if (numbers.length > 0) {
+                // El primer número grande suele ser el total
+                totalValue = numbers[0].num;
+                break;
+              }
+            }
+          }
+          if (totalValue) break;
+        }
       }
       
-      // Fallback: buscar elementos que contengan números grandes
-      const elements = Array.from(document.querySelectorAll('div')).filter(el => {
-        const text = el.textContent?.trim();
-        return text && /^[\d,]+$/.test(text) && text.length < 10 && !el.querySelector('div');
-      });
-      
-      if (elements.length > index && elements[index]) {
-        elements[index].click();
-        return { success: true, method: 'by-number-element' };
+      // Estrategia 2: Si no encontró por label, usar el índice
+      if (!totalValue) {
+        const cards = document.querySelectorAll('[data-testid], [class*="metric"], div[role="button"]');
+        if (cards[index]) {
+          const numbers = Array.from(cards[index].querySelectorAll('*'))
+            .map(e => parseInt(e.textContent?.match(/^\d+$/)?.[0] || 0))
+            .filter(n => n > 0);
+          if (numbers.length > 0) {
+            totalValue = Math.max(...numbers);
+          }
+        }
       }
       
-      return { success: false, cardsFound: metricCards.length, numbersFound: elements.length };
-    }, metricIndex);
+      return {
+        totalValue,
+        found: totalValue !== null
+      };
+    }, metricConfig.label, metricIndex);
 
-    if (!clickResult.success) {
-      console.log(`  ⚠️  Click falló: ${JSON.stringify(clickResult)}`);
+    if (metricData.found) {
+      console.log(`  ✅ Total encontrado: ${metricData.totalValue}`);
     } else {
-      console.log(`  ✅ Click exitoso (${clickResult.method})`);
+      console.log(`  ⚠️  No se encontró número total, usando Vision para el gráfico`);
     }
 
-    await sleep(1500);
+    // Ahora extraer los datos del gráfico
+    let historicalData = await page.evaluate(() => {
+      const result = {
+        dailyValues: [],
+        dates: [],
+        totalValue: null
+      };
+
+      // Buscar SVG circles
+      const circles = document.querySelectorAll('circle');
+      
+      if (circles.length > 0) {
+        const values = [];
+        
+        circles.forEach((circle) => {
+          const dataValue = circle.getAttribute('data-value') || 
+                           circle.getAttribute('aria-label') ||
+                           circle.getAttribute('title');
+          
+          if (dataValue) {
+            const numMatch = dataValue.match(/\d+/);
+            if (numMatch) {
+              values.push(parseInt(numMatch[0]));
+            }
+          }
+        });
+        
+        if (values.length > 0) {
+          result.dailyValues = values;
+        }
+      }
+
+      return result;
+    });
 
     // Extraer todos los puntos del gráfico
     let historicalData = await page.evaluate(() => {
