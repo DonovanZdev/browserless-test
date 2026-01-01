@@ -101,63 +101,71 @@ async function extractTikTokMetric(page, metricConfig, period, metricsData, metr
   try {
     console.log(`\n📍 Extrayendo: ${metricConfig.name} (índice: ${metricIndex})`);
     
-    // PASO 1: Encontrar la tarjeta de métrica y hacer click en ella
-    // Primero, encontrar el elemento usando page.$() que es más confiable
-    const metricElement = await page.$(
-      `//div[contains(text(), '${metricConfig.label}')]`,
-    );
-    
-    if (metricElement) {
-      console.log(`  ✅ Encontrada tarjeta, haciendo click...`);
-      await metricElement.click();
-      await sleep(800); // Esperar a que el gráfico se actualice
-    } else {
-      console.log(`  ⚠️  No se encontró elemento para: ${metricConfig.label}`);
+    // PASO 1: Encontrar y hacer click en la tarjeta de la métrica
+    // Usar page.$eval para encontrar el elemento y hacer click
+    try {
+      await page.evaluate((label) => {
+        // Buscar el elemento que contiene el label
+        const elements = Array.from(document.querySelectorAll('*'))
+          .filter(el => el.textContent.includes(label));
+        
+        if (elements.length > 0) {
+          // Tomar el más pequeño (más específico)
+          const target = elements.reduce((a, b) => 
+            a.textContent.length < b.textContent.length ? a : b
+          );
+          // Hacer click usando Puppeteer desde el contexto del browser
+          target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          target.click();
+        }
+      }, metricConfig.label);
+      
+      console.log(`  ✅ Click ejecutado en tarjeta`);
+      await sleep(1000); // Esperar más tiempo para la actualización
+    } catch (e) {
+      console.log(`  ⚠️  Error al hacer click: ${e.message}`);
     }
 
     // PASO 2: Extraer el total desde el DOM
     const domData = await page.evaluate((label) => {
-      const result = { totalValue: null, found: false };
+      const result = { totalValue: 0 };
       
-      // Buscar elementos que contienen el label
-      const allElements = Array.from(document.querySelectorAll('*'))
-        .filter(el => el.textContent?.includes(label));
-      
-      // Del más específico al más general
-      for (let el of allElements.reverse()) {
-        const parentText = el.parentElement?.textContent || '';
-        const numbers = parentText.match(/\d+/g) || [];
-        
-        if (numbers.length > 0) {
-          const sorted = numbers.map(Number).sort((a, b) => b - a);
-          result.totalValue = sorted[0]; // El mayor es probablemente el total
-          result.found = true;
-          break;
+      // Buscar todos los números en la página
+      const numberTexts = [];
+      document.querySelectorAll('*').forEach(el => {
+        const text = el.innerText?.trim();
+        if (text && /^\d+$/.test(text)) {
+          const num = parseInt(text);
+          if (num > 0) numberTexts.push(num);
         }
+      });
+      
+      // El más grande es probablemente el total
+      if (numberTexts.length > 0) {
+        result.totalValue = Math.max(...numberTexts);
       }
       
       return result;
     }, metricConfig.label);
 
-    console.log(`  Total desde DOM: ${domData.totalValue}`);
+    console.log(`  📊 Total desde DOM: ${domData.totalValue}`);
 
-    // PASO 3: Usar Vision para extraer valores del gráfico
-    console.log(`  📸 Capturando screenshot para análisis...`);
+    // PASO 3: Capturar screenshot y usar Vision
     const screenshot = await page.screenshot({ encoding: 'base64' });
     
-    const totalFromDOM = domData.totalValue || 0;
-    const prompt = `Extrae los valores del gráfico de TikTok Studio.
+    const prompt = `Extrae los valores exactos del gráfico de TikTok Studio.
 
-Total mostrado: ${totalFromDOM}
+Número mostrado: ${domData.totalValue}
 Período: ${period} días
 
 Instrucciones:
-1. Lee de IZQUIERDA a DERECHA (día antiguo → reciente)
-2. Extrae EXACTAMENTE ${period} valores
-3. La suma DEBE ser ${totalFromDOM}
+- Lee de IZQUIERDA a DERECHA
+- Extrae exactamente ${period} valores (usa 0 si está vacío)
+- Cada número = 1 día
+- SUMA total = ${domData.totalValue}
 
-RESPONDE SOLO JSON:
-[num, num, num, ...]`;
+RESPONDE SOLO CON ARRAY JSON, NADA MÁS:
+[1, 2, 3, 4, ...]`;
     
     try {
       const response = await openai.chat.completions.create({
@@ -177,55 +185,56 @@ RESPONDE SOLO JSON:
             ],
           },
         ],
-        max_tokens: 300,
+        max_tokens: 250,
       });
 
       const content = response.choices[0].message.content.trim();
       const arrayMatch = content.match(/\[\s*[\d\s,]*\]/);
       
-      if (arrayMatch) {
-        const extractedArray = JSON.parse(arrayMatch[0]);
-        const sum = extractedArray.reduce((a, b) => a + b, 0);
-        console.log(`  ✅ Vision: ${extractedArray.length} puntos, suma: ${sum}`);
-        
-        // PASO 4: Construir array histórico con fechas
-        const historyArray = [];
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        
-        for (let i = 0; i < extractedArray.length; i++) {
-          const daysAgo = extractedArray.length - 1 - i;
-          const date = new Date(today);
-          date.setDate(date.getDate() - daysAgo);
-          
-          if (date > today) continue;
-          
-          const dayNum = date.getDate();
-          const monthNum = date.getMonth();
-          const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-          const fechaStr = `${dayNum} de ${months[monthNum]}`;
-          
-          historyArray.push({
-            fecha: fechaStr,
-            valor: extractedArray[i].toString(),
-            timestamp: Math.floor(date.getTime() / 1000),
-            date: date.toISOString().split('T')[0]
-          });
-        }
-
-        metricsData[metricConfig.name] = {
-          totalValue: sum.toString(),
-          historicalData: historyArray,
-          totalPoints: historyArray.length
-        };
-
-        console.log(`  ✅ ${metricConfig.name}: ${historyArray.length} puntos | Total: ${sum}`);
-      } else {
-        console.log(`  ⚠️  Vision no devolvió array válido: ${content.slice(0, 60)}`);
-        throw new Error('Invalid Vision response');
+      if (!arrayMatch) {
+        console.log(`  ⚠️  Vision no devolvió array válido`);
+        throw new Error('No array found');
       }
-    } catch (e) {
-      console.error(`  Error Vision:`, e.message);
+      
+      let extractedArray = JSON.parse(arrayMatch[0]);
+      const sum = extractedArray.reduce((a, b) => a + b, 0);
+      
+      console.log(`  ✅ Vision: ${extractedArray.length} puntos, suma: ${sum}`);
+      
+      // Construir histórico
+      const historyArray = [];
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      for (let i = 0; i < extractedArray.length; i++) {
+        const daysAgo = extractedArray.length - 1 - i;
+        const date = new Date(today);
+        date.setDate(date.getDate() - daysAgo);
+        
+        if (date > today) continue;
+        
+        const dayNum = date.getDate();
+        const monthNum = date.getMonth();
+        const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+        
+        historyArray.push({
+          fecha: `${dayNum} de ${months[monthNum]}`,
+          valor: extractedArray[i].toString(),
+          timestamp: Math.floor(date.getTime() / 1000),
+          date: date.toISOString().split('T')[0]
+        });
+      }
+
+      metricsData[metricConfig.name] = {
+        totalValue: sum.toString(),
+        historicalData: historyArray,
+        totalPoints: historyArray.length
+      };
+
+      console.log(`  ✅ ${metricConfig.name}: ${historyArray.length} días | Total: ${sum}`);
+      
+    } catch (visionError) {
+      console.error(`  ❌ Error en Vision:`, visionError.message);
       metricsData[metricConfig.name] = {
         totalValue: '0',
         historicalData: [],
