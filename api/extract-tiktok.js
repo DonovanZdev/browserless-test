@@ -197,16 +197,27 @@ async function extractTikTokMetric(page, metricConfig, period, metricsData, metr
     const analyticsUrl = `https://www.tiktok.com/tiktokstudio/analytics?activeAnalyticsMetric=${metricParam}&dateRange=%7B%22type%22%3A%22fixed%22%2C%22pastDay%22%3A${period}%7D`;
     
     console.log(`  🔗 Navegando a analytics para ${metricParam}...`);
-    await page.goto(analyticsUrl, {
-      waitUntil: 'networkidle2',
-      timeout: 30000
-    });
+    try {
+      await page.goto(analyticsUrl, {
+        waitUntil: 'networkidle2',
+        timeout: 30000
+      });
+    } catch (navError) {
+      console.error(`  ⚠️  Error navegando: ${navError.message}`);
+      throw navError;
+    }
     
     await sleep(2500); // Esperar a que se renderice completamente
 
     // PASO 3: Capturar screenshot del gráfico y usar Vision
     console.log(`  📸 Capturando gráfico con Vision...`);
-    const screenshot = await page.screenshot({ encoding: 'base64' });
+    let screenshot;
+    try {
+      screenshot = await page.screenshot({ encoding: 'base64' });
+    } catch (screenshotError) {
+      console.error(`  ⚠️  Error en screenshot: ${screenshotError.message}`);
+      throw screenshotError;
+    }
     
     let extractedArray = [];
     
@@ -302,12 +313,14 @@ Ejemplo: [0, 0, 5, 0, 3, 0, 0, 2, 0, ...]`;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
+    // Empezar desde AYER (excluir hoy) para que los últimos 28 días sean completos
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
     for (let i = 0; i < extractedArray.length; i++) {
       const daysAgo = extractedArray.length - 1 - i;
-      const date = new Date(today);
+      const date = new Date(yesterday);
       date.setDate(date.getDate() - daysAgo);
-      
-      if (date > today) continue;
       
       const dayNum = date.getDate();
       const monthNum = date.getMonth();
@@ -413,9 +426,19 @@ async function extractTikTokDataHistorical(tiktokCookies, period = 28) {
     } catch (err) {
       console.error(`Error processing ${metricConfig.name}:`, err.message);
     }
+    
+    // Pequeña pausa entre métricas para evitar problemas de sesión
+    await sleep(500);
   }
 
-  await browser.close();
+  // Esperar un poco antes de cerrar el browser
+  await sleep(1000);
+  
+  try {
+    await browser.close();
+  } catch (closeError) {
+    console.error('Error closing browser:', closeError.message);
+  }
   
   return metricsData;
 }
