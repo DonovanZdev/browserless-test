@@ -169,9 +169,6 @@ async function extractTotalsFromDashboard(page, period) {
   }
 
   return totals;
-
-  console.log('  ✅ Dashboard extraction result:', JSON.stringify(totals));
-  return totals;
 }
 
 /**
@@ -337,11 +334,13 @@ Ejemplo: [0, 0, 5, 0, 3, 0, 0, 2, 0, ...]`;
 
     console.log(`  ✅ ${metricConfig.name}: ${historyArray.length} días | Total: ${finalTotal}`);
   } catch (e) {
-    console.error(`  ❌ Error ${metricConfig.name}:`, e.message);
+    console.error(`  ❌ Error en ${metricConfig.name}:`, e.message);
+    console.error(`  Stack: ${e.stack}`);
     metricsData[metricConfig.name] = {
       totalValue: '0',
       historicalData: [],
-      totalPoints: 0
+      totalPoints: 0,
+      error: e.message
     };
   }
 }
