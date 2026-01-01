@@ -31,24 +31,104 @@ async function extractMetaData(cookies, url, platform) {
   await page.keyboard.press('Escape');
   await sleep(1500);
   
-  await page.evaluate(() => {
-    window.scrollBy(0, window.innerHeight * 3);
-  });
-  await sleep(2000);
+  // Esperar a que la página esté completamente renderizada
+  await page.waitForFunction(() => {
+    return document.readyState === 'complete';
+  }, { timeout: 10000 });
 
-  // Tomar screenshot en base64
-  const screenshot = await page.screenshot({ encoding: 'base64' });
+  // Extraer números exactos del DOM de forma más inteligente
+  const pageContent = await page.evaluate(() => {
+    const allText = document.body.innerText;
+    
+    // Crear objeto para almacenar números exactos por métrica
+    const metrics = {
+      visualizaciones: null,
+      espectadores: null,
+      interacciones: null,
+      clics_enlace: null,
+      visitas: null,
+      seguidores: null,
+      periodo: null
+    };
+    
+    // Buscar específicamente por labels conocidos
+    const allElements = Array.from(document.querySelectorAll('*'));
+    
+    allElements.forEach(el => {
+      const text = (el.innerText || el.textContent || '').trim();
+      const html = el.outerHTML;
+      const ariaLabel = el.getAttribute('aria-label') || '';
+      const title = el.getAttribute('title') || '';
+      
+      // Extraer números del elemento actual y hermanos
+      const parent = el.parentElement;
+      const siblingsText = parent ? (parent.innerText || parent.textContent || '') : '';
+      
+      // Buscar "Visualizaciones" y su número
+      if (text.includes('Visualizaciones') || ariaLabel.includes('Visualizaciones')) {
+        // Extraer todos los números del texto
+        const allNumbers = siblingsText.match(/\d+[.,]?\d*/g) || [];
+        if (allNumbers.length > 0 && !metrics.visualizaciones) {
+          metrics.visualizaciones = allNumbers[0];
+        }
+      }
+      // Buscar "Espectadores" 
+      if (text.includes('Espectadores') || ariaLabel.includes('Espectadores')) {
+        const allNumbers = siblingsText.match(/\d+[.,]?\d*/g) || [];
+        if (allNumbers.length > 0 && !metrics.espectadores) {
+          metrics.espectadores = allNumbers[0];
+        }
+      }
+      // Buscar "Interacciones"
+      if (text.includes('Interacciones')) {
+        const allNumbers = siblingsText.match(/\d+[.,]?\d*/g) || [];
+        if (allNumbers.length > 0 && !metrics.interacciones) {
+          metrics.interacciones = allNumbers[0];
+        }
+      }
+      // Buscar "Clics"
+      if (text.includes('Clics en el enlace') || (text.includes('Clics') && !text.includes('Visitas'))) {
+        const allNumbers = siblingsText.match(/\d+[.,]?\d*/g) || [];
+        if (allNumbers.length > 0 && !metrics.clics_enlace) {
+          metrics.clics_enlace = allNumbers[0];
+        }
+      }
+      // Buscar "Visitas"
+      if (text.includes('Visitas') && !text.includes('Clics')) {
+        const allNumbers = siblingsText.match(/\d+[.,]?\d*/g) || [];
+        if (allNumbers.length > 0 && !metrics.visitas) {
+          metrics.visitas = allNumbers[0];
+        }
+      }
+      // Buscar "Seguidores"
+      if (text.includes('Seguidores')) {
+        const allNumbers = siblingsText.match(/\d+[.,]?\d*/g) || [];
+        if (allNumbers.length > 0 && !metrics.seguidores) {
+          metrics.seguidores = allNumbers[0];
+        }
+      }
+      // Buscar período (fechas)
+      if ((text.includes(' de ') || text.includes('de dic') || text.includes('dic')) && (text.includes('dic') || text.includes('ene') || text.includes('feb'))) {
+        if (!metrics.periodo) metrics.periodo = text;
+      }
+    });
+    
+    return {
+      fullText: allText,
+      extractedMetrics: metrics
+    };
+  });
   
   await browser.close();
   
-  // Usar OpenAI Vision para extraer datos
+  // Usar OpenAI para refinar los números extraídos
   let prompt;
   if (platform === 'instagram') {
-    prompt = "En esta screenshot de Instagram Business Suite, extrae EXACTAMENTE estos KPIs de la sección INFERIOR DERECHA que dice 'Seguidores': 1) Visualizaciones (número grande en mill. de la sección superior izquierda), 2) Alcance de Instagram (número grande en mill. de la sección superior derecha), 3) Interacciones con el contenido (número en mill. de la sección inferior izquierda), 4) Seguidores (número en mil. de la sección inferior derecha, debe ser un número pequeño como 6 mil, NO los 718,840 que aparecen bajo 'De seguidores'). TAMBIÉN extrae el PERIODO que aparece debajo del título 'Rendimiento' (ej: '2 de diciembre de 2025 - 29 de diciembre de 2025'). Responde SOLO en JSON sin explicaciones: {\"visualizaciones\": \"XXX mill.\", \"alcance\": \"XXX mill.\", \"interacciones\": \"XXX mill.\", \"seguidores\": \"X.X mil\", \"periodo\": \"X de mes - X de mes\"}";
+    prompt = "Convierte estos números de Instagram a formato completo sin 'mill' o 'mil': " + JSON.stringify(pageContent.extractedMetrics) + " Responde SOLO en JSON: {\"visualizaciones\": \"XXX\", \"espectadores\": \"XXX\", \"interacciones\": \"XXX\", \"clics_enlace\": \"XXX\", \"alcance\": \"XXX\", \"seguidores\": \"XXX\", \"periodo\": \"X - X\"}";
   } else if (platform === 'tiktok') {
-    prompt = "En esta screenshot de TikTok Studio, extrae EXACTAMENTE estos KPIs de la sección de 'Métricas clave': 1) Visualizaciones de videos (número principal en la primera tarjeta), 2) Visualizaciones de perfil (número en la segunda tarjeta), 3) Me gusta (número total de likes recibidos), 4) Comentarios (número total de comentarios), 5) Veces compartido (número total de shares), 6) Recompensas estimadas (número con $ si aplica). TAMBIÉN extrae el PERIODO exacto que aparece en la esquina superior derecha. Responde SOLO en JSON sin explicaciones: {\"visualizaciones_videos\": \"XXX\", \"visualizaciones_perfil\": \"XXX\", \"me_gusta\": \"XXX\", \"comentarios\": \"XXX\", \"veces_compartido\": \"XXX\", \"recompensas_estimadas\": \"$XXX\", \"periodo\": \"Los últimos X días\"}";
+    prompt = "Convierte estos números de TikTok a formato completo: " + JSON.stringify(pageContent.extractedMetrics) + " Responde SOLO en JSON: {\"visualizaciones_videos\": \"XXX\", \"visualizaciones_perfil\": \"XXX\", \"me_gusta\": \"XXX\", \"comentarios\": \"XXX\", \"veces_compartido\": \"XXX\", \"recompensas_estimadas\": \"XXX\", \"periodo\": \"Los últimos X días\"}";
   } else {
-    prompt = "En esta screenshot de Facebook Business Suite, extrae EXACTAMENTE estos KPIs: 1) Visualizaciones (mill.), 2) Interacciones con el contenido (mill.), 3) Visitas de Facebook (mill.), 4) Seguidores (mil). TAMBIÉN extrae el PERIODO que aparece debajo del título 'Rendimiento' (ej: '2 de diciembre de 2025 - 29 de diciembre de 2025'). Responde SOLO en JSON sin explicaciones: {\"visualizaciones\": \"XXX mill.\", \"interacciones\": \"XXX mill.\", \"visitas\": \"XXX mill.\", \"seguidores\": \"XXX mil\", \"periodo\": \"X de mes - X de mes\"}";
+    prompt = "Recibiste números extraídos de Facebook Business Suite. Mapéalos correctamente a sus métricas: " + JSON.stringify(pageContent.extractedMetrics) + ". El primer número grande (500+ mill) es Visualizaciones, el segundo (20-30 mill) es Espectadores, el tercero (3-5 mill) es Interacciones, el cuarto (80-100 mil) es Clics en el enlace, el quinto es Visitas, el sexto es Seguidores. IMPORTANTE: Convierte a números COMPLETOS sin abreviaciones (518.6 mill = 518600000, 29.8 mill = 29800000, 89.2 mil = 89200). Responde SOLO en JSON: {\"visualizaciones\": \"518600000\", \"espectadores\": \"29800000\", \"interacciones\": \"3400000\", \"clics_enlace\": \"89200\", \"visitas\": \"2500000\", \"seguidores\": \"37200\", \"periodo\": \"3 de dic - 30 de dic\"}";
   }
   
   const response = await openai.chat.completions.create({
@@ -56,21 +136,10 @@ async function extractMetaData(cookies, url, platform) {
     messages: [
       {
         role: "user",
-        content: [
-          {
-            type: "image_url",
-            image_url: {
-              url: `data:image/png;base64,${screenshot}`,
-            },
-          },
-          {
-            type: "text",
-            text: prompt,
-          },
-        ],
+        content: prompt,
       },
     ],
-    max_tokens: 200,
+    max_tokens: 500,
   });
 
   // Parsear respuesta de OpenAI
@@ -175,7 +244,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const { cookies, platform, meta_cookies, tiktok_cookies, tiktok_period } = req.body;
+    const { cookies, platform, meta_cookies, tiktok_cookies, tiktok_period, facebook_period } = req.body;
     
     // Soporte para cookies: meta_cookies para Facebook/Instagram, tiktok_cookies para TikTok
     const cookieMap = {
@@ -188,10 +257,18 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ error: "Se requieren meta_cookies y/o tiktok_cookies" });
     }
     
+    // Función para construir URL de Facebook con período dinámico
+    function buildFacebookUrl(period = 'LAST_28D') {
+      const businessId = '176166689688823';
+      const assetId = '8555156748';
+      const timeRange = `%2522${period}%2522`; // URL encoded de "%22PERIOD%22"
+      return `https://business.facebook.com/latest/insights/results?business_id=${businessId}&asset_id=${assetId}&time_range=${timeRange}&platform=Facebook&audience_tab=demographics`;
+    }
+    
     // URLs base para Facebook, Instagram y TikTok
     const urls = {
-      facebook: "https://business.facebook.com/latest/insights/overview?business_id=176166689688823&asset_id=8555156748&time_range=%257B%2522end%2522%253A%25222025-12-03%2522%252C%2522start%2522%253A%25222025-12-03%2522%257D",
-      instagram: "https://business.facebook.com/latest/insights/overview?business_id=176166689688823&asset_id=8555156748&time_range=%257B%2522end%2522%253A%25222025-12-03%2522%252C%2522start%2522%253A%25222025-12-03%2522%257D&platform=Instagram",
+      facebook: buildFacebookUrl(facebook_period || 'LAST_28D'),
+      instagram: buildFacebookUrl(facebook_period || 'LAST_28D'),
       tiktok: "https://www.tiktok.com/tiktokstudio?dateRange=%7B%22type%22%3A%22fixed%22%2C%22pastDay%22%3A7%7D&activeAnalyticsMetric=video_views"
     };
     
@@ -213,28 +290,22 @@ module.exports = async function handler(req, res) {
       // Convertir cookies a array si es necesario
       let cookieArray = plat_cookies;
       if (typeof plat_cookies === 'object' && !Array.isArray(plat_cookies)) {
-        if (plat === 'tiktok') {
-          // Para TikTok, usar con período
-          console.log(`Extrayendo datos de ${plat}...`);
-          results[plat] = await extractTikTokData(plat_cookies, tiktok_period || 28);
-        } else {
-          // Para Facebook/Instagram, convertir a array
-          cookieArray = Object.entries(plat_cookies).map(([name, value]) => ({
-            name,
-            value,
-            domain: plat === 'tiktok' ? '.tiktok.com' : '.facebook.com'
-          }));
-          
-          console.log(`Extrayendo datos de ${plat}...`);
-          results[plat] = await extractMetaData(cookieArray, urls[plat], plat);
-        }
-      } else {
+        // Es un objeto, convertir a array
+        cookieArray = Object.entries(plat_cookies).map(([name, value]) => ({
+          name,
+          value,
+          domain: plat === 'tiktok' ? '.tiktok.com' : '.facebook.com'
+        }));
+      }
+      
+      if (plat === 'tiktok') {
+        // Para TikTok, usar con período
         console.log(`Extrayendo datos de ${plat}...`);
-        if (plat === 'tiktok') {
-          results[plat] = await extractTikTokData(plat_cookies, tiktok_period || 28);
-        } else {
-          results[plat] = await extractMetaData(cookieArray, urls[plat], plat);
-        }
+        results[plat] = await extractTikTokData(cookieArray, tiktok_period || 28);
+      } else {
+        // Para Facebook/Instagram
+        console.log(`Extrayendo datos de ${plat}...`);
+        results[plat] = await extractMetaData(cookieArray, urls[plat], plat);
       }
     }
     
