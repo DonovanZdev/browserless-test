@@ -178,6 +178,17 @@ async function extractTikTokMetric(page, metricConfig, period, metricsData, metr
   try {
     console.log(`\n📍 Extrayendo: ${metricConfig.name} (total esperado: ${totalValue})`);
     
+    // Si el total es 0, no hay datos que extraer
+    if (totalValue === 0) {
+      console.log(`  ℹ️  Total es 0, sin datos históricos para extraer`);
+      metricsData[metricConfig.name] = {
+        totalValue: '0',
+        historicalData: [],
+        totalPoints: 0
+      };
+      return;
+    }
+    
     // PASO 1: Mapear el nombre de la métrica al parámetro de URL
     let metricParam = 'profile_views'; // Por defecto
     
