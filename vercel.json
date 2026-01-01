@@ -1,13 +1,13 @@
 {
   "functions": {
     "api/extract.js": {
-      "maxDuration": 300
+      "maxDuration": 60
     },
     "api/extract-with-exports.js": {
-      "maxDuration": 300
+      "maxDuration": 60
     },
     "api/extract-all-platforms.js": {
-      "maxDuration": 600
+      "maxDuration": 60
     }
   }
 }
