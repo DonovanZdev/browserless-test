@@ -101,14 +101,13 @@ async function extractTikTokMetric(page, metricConfig, period, metricsData, metr
   try {
     console.log(`\n📍 Extrayendo: ${metricConfig.name} (índice: ${metricIndex})`);
     
-    // PASO 1: Navegar a la URL del metric específico cambiando el parámetro activeAnalyticsMetric
-    // activeAnalyticsMetric puede ser: views, likes, comments, shares, videoviews
-    let metricParam = 'views'; // Por defecto
+    // PASO 1: Navegar a la URL del metric específico con parámetros correctos
+    let metricParam = 'profile_views'; // Por defecto
     
     if (metricConfig.name === 'visualizaciones_videos') {
-      metricParam = 'videoviews';
+      metricParam = 'video_views';
     } else if (metricConfig.name === 'visualizaciones_perfil') {
-      metricParam = 'views';
+      metricParam = 'profile_views';
     } else if (metricConfig.name === 'me_gusta') {
       metricParam = 'likes';
     } else if (metricConfig.name === 'comentarios') {
@@ -156,19 +155,27 @@ async function extractTikTokMetric(page, metricConfig, period, metricsData, metr
 
     console.log(`  📊 Total desde DOM: ${domData.totalValue} | Found label: ${domData.foundLabel} | Numbers: ${domData.allNumbers.join(',')}`);
 
-    // PASO 3: Construir datos históricos simple (fallback sin Vision)
-    // Si no podemos extraer con Vision, al menos devolvemos el total
+    // PASO 3: Usar Vision para detectar puntos del gráfico
     let extractedArray = [];
     
-    // Capturar screenshot para Vision como último intento
     const screenshot = await page.screenshot({ encoding: 'base64' });
     
-    const prompt = `Extrae los ${period} valores del gráfico de TikTok Studio.
+    const prompt = `Analiza el gráfico de TikTok Studio y extrae los valores diarios.
 
-Número mostrado: ${domData.totalValue}
+TAREA:
+1. El NÚMERO GRANDE mostrado es: ${domData.totalValue}
+2. Localiza el GRÁFICO con puntos/barras
+3. Cuenta EXACTAMENTE ${period} puntos (IZQUIERDA a DERECHA = día antiguo a reciente)
+4. Lee el valor de CADA PUNTO
+5. Si no ves número, estima por tamaño/altura del punto
 
-RESPONDE SOLO CON ARRAY JSON:
-[1, 2, 3, ...]`;
+CRÍTICO:
+- Suma debe ser exactamente ${domData.totalValue}
+- CADA número = 1 día
+- Responde SOLO JSON array
+- Nada de explicación
+
+[5, 2, 0, 8, 3, ...]`;
     
     try {
       const response = await openai.chat.completions.create({
@@ -188,19 +195,22 @@ RESPONDE SOLO CON ARRAY JSON:
             ],
           },
         ],
-        max_tokens: 150,
+        max_tokens: 300,
       });
 
       const content = response.choices[0].message.content.trim();
-      console.log(`  Vision raw: ${content.substring(0, 60)}`);
+      console.log(`  Vision response: ${content.substring(0, 80)}`);
       
       const arrayMatch = content.match(/\[\s*[\d\s,]*\]/);
       if (arrayMatch) {
         extractedArray = JSON.parse(arrayMatch[0]);
-        console.log(`  ✅ Vision: ${extractedArray.length} puntos`);
+        const sum = extractedArray.reduce((a, b) => a + b, 0);
+        console.log(`  ✅ Vision: ${extractedArray.length} puntos, suma: ${sum}`);
+      } else {
+        console.log(`  ⚠️  Vision no devolvió array válido`);
       }
     } catch (visionError) {
-      console.log(`  ⚠️  Vision failed, using fallback`);
+      console.log(`  ⚠️  Vision error: ${visionError.message}`);
     }
 
     // Si Vision no funcionó, crear fallback simple

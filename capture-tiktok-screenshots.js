@@ -31,8 +31,8 @@ async function captureMetricScreenshots() {
   await new Promise(r => setTimeout(r, 3000));
 
   const metrics = [
-    { label: 'Visualizaciones de videos', param: 'videoviews' },
-    { label: 'Visualizaciones de perfil', param: 'views' },
+    { label: 'Visualizaciones de videos', param: 'video_views' },
+    { label: 'Visualizaciones de perfil', param: 'profile_views' },
     { label: 'Me gusta', param: 'likes' },
     { label: 'Comentarios', param: 'comments' },
     { label: 'Veces compartido', param: 'shares' }
