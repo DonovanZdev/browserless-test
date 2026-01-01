@@ -3,9 +3,18 @@ const fs = require('fs');
 
 const TOKEN = process.env.BROWSERLESS_TOKEN || "2ThMQelUWHfBWdM8f1e02d135a315e02e44d27e13e5020198";
 
-function parseCookies(cookieStr, domain = '.tiktok.com') {
+function parseCookies(tiktokCookies, domain = '.tiktok.com') {
+  // If it's already an array, return it as is
+  if (Array.isArray(tiktokCookies)) {
+    return tiktokCookies.map(cookie => ({
+      ...cookie,
+      domain: domain
+    }));
+  }
+  
+  // If it's a string, parse it
   const cookieMap = new Map();
-  const pairs = cookieStr.split(';').map(pair => pair.trim());
+  const pairs = tiktokCookies.split(';').map(pair => pair.trim());
   
   pairs.forEach(pair => {
     const [key, value] = pair.split('=');
