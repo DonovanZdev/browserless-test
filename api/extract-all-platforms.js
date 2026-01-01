@@ -99,48 +99,66 @@ async function extractTikTokDataHistorical(tiktokCookies, period = 28) {
   const metricsData = {};
   
   const metrics = [
-    'visualizaciones_videos',
-    'visualizaciones_perfil',
-    'me_gusta',
-    'comentarios',
-    'veces_compartido'
+    { name: 'visualizaciones_videos', label: 'Visualizaciones de videos' },
+    { name: 'visualizaciones_perfil', label: 'Visualizaciones de perfil' },
+    { name: 'me_gusta', label: 'Me gusta' },
+    { name: 'comentarios', label: 'Comentarios' },
+    { name: 'veces_compartido', label: 'Veces compartido' }
   ];
 
   console.log('📈 Extrayendo valores históricos de cada métrica...\n');
 
-  for (const metricName of metrics) {
+  for (const metricConfig of metrics) {
     try {
-      // Hacer click en la métrica para cambiar el gráfico (buscar por data-testid o label)
-      await page.evaluate((metric) => {
-        // Buscar botón o elemento de la métrica
-        const elements = Array.from(document.querySelectorAll('button, [role="button"], [class*="metric"], div')).filter(el => {
-          const text = el.textContent.toLowerCase();
-          return text.includes(metric.replace(/_/g, ' '));
+      // Hacer click en la métrica para cambiar el gráfico
+      await page.evaluate((label) => {
+        // Buscar el botón de la métrica por texto
+        const buttons = Array.from(document.querySelectorAll('button, [role="button"], div')).filter(el => {
+          return el.textContent.includes(label);
         });
         
-        if (elements.length > 0) {
-          elements[0].click();
+        if (buttons.length > 0) {
+          buttons[0].click();
         }
-      }, metricName);
+      }, metricConfig.label);
 
-      await sleep(1500);
+      await sleep(2000);
 
-      // Extraer datos del gráfico
-      const historicalData = await page.evaluate(() => {
+      // Extraer todos los puntos del gráfico
+      let historicalData = await page.evaluate(() => {
         const result = {
           dailyValues: [],
           dates: []
         };
 
-        // Buscar puntos del gráfico (circles, path elements)
-        const chartPoints = document.querySelectorAll('[class*="chart"] circle, [class*="graph"] circle, svg circle');
+        // Buscar todos los círculos del gráfico (puntos de datos)
+        const circles = document.querySelectorAll('circle[role="presentation"], circle[data-testid], svg circle');
         
-        if (chartPoints.length > 0) {
-          // Extraer valores de los puntos
-          chartPoints.forEach(point => {
-            const cy = parseFloat(point.getAttribute('cy'));
-            const dataValue = point.getAttribute('data-value') || point.getAttribute('aria-label');
+        if (circles.length > 0) {
+          const values = [];
+          
+          // Para cada círculo, extraer data attributes
+          circles.forEach((circle) => {
+            const dataValue = circle.getAttribute('data-value') || 
+                             circle.getAttribute('aria-label') ||
+                             circle.parentElement?.getAttribute('data-value');
             
+            if (dataValue) {
+              const numMatch = dataValue.match(/\d+/);
+              if (numMatch) {
+                values.push(parseInt(numMatch[0]));
+              }
+            }
+          });
+          
+          result.dailyValues = values;
+        }
+
+        // Si no hay puntos visibles, buscar en rects
+        if (result.dailyValues.length === 0) {
+          const rects = document.querySelectorAll('rect[data-testid*="chart"], rect[data-value]');
+          rects.forEach(rect => {
+            const dataValue = rect.getAttribute('data-value');
             if (dataValue) {
               const numMatch = dataValue.match(/\d+/);
               if (numMatch) {
@@ -150,30 +168,69 @@ async function extractTikTokDataHistorical(tiktokCookies, period = 28) {
           });
         }
 
-        // Si no hay puntos, intentar extraer del texto visible del gráfico
-        if (result.dailyValues.length === 0) {
-          const tooltips = document.querySelectorAll('[class*="tooltip"], [role="tooltip"], [data-tooltip]');
-          tooltips.forEach(tooltip => {
-            const numMatch = tooltip.textContent.match(/\d+/);
-            if (numMatch) {
-              result.dailyValues.push(parseInt(numMatch[0]));
-            }
-          });
-        }
-
         // Extraer fechas del eje X
-        const xAxisLabels = document.querySelectorAll('[class*="x-axis"] text, [class*="xaxis"] text, svg text');
+        const xAxisLabels = document.querySelectorAll('[class*="x-axis"] text, [class*="axis"] text, svg text');
+        const dates = new Set();
         xAxisLabels.forEach(label => {
           const dateText = label.textContent.trim();
           if (dateText.match(/\d+\s+de\s+\w+|^\d{1,2}$/)) {
-            result.dates.push(dateText);
+            dates.add(dateText);
           }
         });
+        result.dates = Array.from(dates);
 
         return result;
       });
 
-      // Si tenemos datos, armarlos en formato histórico
+      // Si tenemos pocos datos, intentar Vision como fallback
+      if (historicalData.dailyValues.length < 10) {
+        console.log(`  ⚠️  Pocos datos en DOM (${historicalData.dailyValues.length}), usando Vision...`);
+        
+        const screenshot = await page.screenshot({ encoding: 'base64' });
+        
+        const prompt = `Extrae TODOS los valores diarios del gráfico visible para TikTok Studio ${metricConfig.label}. 
+        
+El gráfico muestra hasta ${period} días de datos. Cuando hagas hover sobre cada punto, aparece el valor numérico.
+
+Responde SOLO con un array JSON de números en orden cronológico (del más antiguo al más reciente):
+[numero1, numero2, numero3, ...]
+
+Si no puedes extraer todos, extrae al menos los que sean visibles. Incluye TODOS los puntos del gráfico.`;
+        
+        const response = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: `data:image/png;base64,${screenshot}`,
+                  },
+                },
+                {
+                  type: "text",
+                  text: prompt,
+                },
+              ],
+            },
+          ],
+          max_tokens: 500,
+        });
+
+        try {
+          const content = response.choices[0].message.content;
+          const arrayMatch = content.match(/\[\s*\d+[\s\d,]*\]/);
+          if (arrayMatch) {
+            historicalData.dailyValues = JSON.parse(arrayMatch[0]);
+          }
+        } catch (e) {
+          console.error(`  Error Vision para ${metricConfig.name}:`, e.message);
+        }
+      }
+
+      // Armar datos históricos
       if (historicalData.dailyValues.length > 0) {
         const historyArray = [];
         const today = new Date();
@@ -201,39 +258,25 @@ async function extractTikTokDataHistorical(tiktokCookies, period = 28) {
           return sum + (parseInt(item.valor) || 0);
         }, 0).toString();
 
-        metricsData[metricName] = {
+        metricsData[metricConfig.name] = {
           totalValue: totalValue,
           historicalData: historyArray,
           totalPoints: historyArray.length
         };
 
-        console.log(`  ✅ ${metricName}: ${historyArray.length} puntos | Total: ${totalValue}`);
+        console.log(`  ✅ ${metricConfig.name}: ${historyArray.length} puntos | Total: ${totalValue}`);
       } else {
-        // Fallback: extraer solo el valor total del DOM
-        const totalValue = await page.evaluate((metric) => {
-          const containers = Array.from(document.querySelectorAll('div, span, p')).filter(el => {
-            const text = el.textContent.toLowerCase();
-            return text.includes(metric.replace(/_/g, ' ')) && text.match(/\d+/);
-          });
-          
-          if (containers.length > 0) {
-            const match = containers[0].textContent.match(/\d+/);
-            return match ? match[0] : '0';
-          }
-          return '0';
-        }, metricName);
-
-        metricsData[metricName] = {
-          totalValue: totalValue,
+        metricsData[metricConfig.name] = {
+          totalValue: '0',
           historicalData: [],
           totalPoints: 0
         };
 
-        console.log(`  ⚠️  ${metricName}: 0 puntos | Total: ${totalValue}`);
+        console.log(`  ⚠️  ${metricConfig.name}: Sin datos`);
       }
     } catch (e) {
-      console.error(`  ❌ Error extrayendo ${metricName}:`, e.message);
-      metricsData[metricName] = {
+      console.error(`  ❌ Error ${metricConfig.name}:`, e.message);
+      metricsData[metricConfig.name] = {
         totalValue: '0',
         historicalData: [],
         totalPoints: 0
