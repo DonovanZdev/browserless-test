@@ -1,0 +1,341 @@
+const puppeteer = require("puppeteer-core");
+const { OpenAI } = require("openai");
+
+const TOKEN = "2ThMQelUWHfBWdM8f1e02d135a315e02e44d27e13e5020198";
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+
+async function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Parsea cookies de cualquier formato (string JSON, objeto, array)
+ */
+function parseCookies(cookies, domain = '.tiktok.com') {
+  if (!cookies) return [];
+  
+  if (typeof cookies === 'string') {
+    try {
+      cookies = JSON.parse(cookies);
+    } catch (e) {
+      console.error('Error parseando cookies:', e.message);
+      return [];
+    }
+  }
+
+  let cookieArray = [];
+  
+  if (Array.isArray(cookies)) {
+    cookieArray = cookies
+      .filter(cookie => cookie && cookie.name && cookie.value)
+      .map(cookie => {
+        const processed = {
+          name: String(cookie.name),
+          value: String(cookie.value),
+          domain: cookie.domain || domain,
+          path: cookie.path || '/'
+        };
+        
+        if (cookie.secure !== undefined) processed.secure = Boolean(cookie.secure);
+        if (cookie.httpOnly !== undefined) processed.httpOnly = Boolean(cookie.httpOnly);
+        if (cookie.expires !== undefined) processed.expires = Number(cookie.expires);
+        if (cookie.sameSite) processed.sameSite = String(cookie.sameSite);
+        
+        return processed;
+      });
+  } 
+  else if (typeof cookies === 'object') {
+    cookieArray = Object.entries(cookies)
+      .filter(([name, value]) => name && value)
+      .map(([name, value]) => ({
+        name: String(name),
+        value: String(value),
+        domain,
+        path: '/'
+      }));
+  }
+
+  console.log(`✅ Parseados ${cookieArray.length} cookies válidos para ${domain}`);
+  return cookieArray;
+}
+
+/**
+ * Extrae una métrica individual de TikTok
+ */
+async function extractTikTokMetric(page, metricConfig, period, metricsData) {
+  try {
+    // Hacer click en la métrica para cambiar el gráfico
+    await page.evaluate((label) => {
+      const buttons = Array.from(document.querySelectorAll('button, [role="button"], div')).filter(el => {
+        return el.textContent.includes(label);
+      });
+      
+      if (buttons.length > 0) {
+        buttons[0].click();
+      }
+    }, metricConfig.label);
+
+    await sleep(1000);
+
+    // Extraer todos los puntos del gráfico
+    let historicalData = await page.evaluate(() => {
+      const result = {
+        dailyValues: [],
+        dates: []
+      };
+
+      const circles = document.querySelectorAll('circle[role="presentation"], circle[data-testid], svg circle');
+      
+      if (circles.length > 0) {
+        const values = [];
+        
+        circles.forEach((circle) => {
+          const dataValue = circle.getAttribute('data-value') || 
+                           circle.getAttribute('aria-label') ||
+                           circle.parentElement?.getAttribute('data-value');
+          
+          if (dataValue) {
+            const numMatch = dataValue.match(/\d+/);
+            if (numMatch) {
+              values.push(parseInt(numMatch[0]));
+            }
+          }
+        });
+        
+        result.dailyValues = values;
+      }
+
+      if (result.dailyValues.length === 0) {
+        const rects = document.querySelectorAll('rect[data-testid*="chart"], rect[data-value]');
+        rects.forEach(rect => {
+          const dataValue = rect.getAttribute('data-value');
+          if (dataValue) {
+            const numMatch = dataValue.match(/\d+/);
+            if (numMatch) {
+              result.dailyValues.push(parseInt(numMatch[0]));
+            }
+          }
+        });
+      }
+
+      return result;
+    });
+
+    // Si tenemos pocos datos, intentar Vision como fallback
+    if (historicalData.dailyValues.length < 10) {
+      console.log(`  ⚠️  Pocos datos en DOM (${historicalData.dailyValues.length}), usando Vision...`);
+      
+      const screenshot = await page.screenshot({ encoding: 'base64' });
+      
+      const prompt = `Extrae TODOS los valores diarios del gráfico visible para TikTok Studio ${metricConfig.label}. 
+        
+El gráfico muestra hasta ${period} días de datos. Responde SOLO con un array JSON:
+[numero1, numero2, numero3, ...]`;
+      
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:image/png;base64,${screenshot}`,
+                },
+              },
+              {
+                type: "text",
+                text: prompt,
+              },
+            ],
+          },
+        ],
+        max_tokens: 300,
+      });
+
+      try {
+        const content = response.choices[0].message.content;
+        const arrayMatch = content.match(/\[\s*\d+[\s\d,]*\]/);
+        if (arrayMatch) {
+          historicalData.dailyValues = JSON.parse(arrayMatch[0]);
+        }
+      } catch (e) {
+        console.error(`  Error Vision para ${metricConfig.name}:`, e.message);
+      }
+    }
+
+    // Armar datos históricos
+    if (historicalData.dailyValues.length > 0) {
+      const historyArray = [];
+      const today = new Date();
+      
+      for (let i = 0; i < historicalData.dailyValues.length && i < period; i++) {
+        const daysAgo = period - historicalData.dailyValues.length + i;
+        const date = new Date(today);
+        date.setDate(date.getDate() - daysAgo);
+        
+        const dayNum = date.getDate();
+        const monthNum = date.getMonth();
+        const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+        const fechaStr = `${dayNum} de ${months[monthNum]}`;
+        
+        historyArray.push({
+          fecha: fechaStr,
+          valor: historicalData.dailyValues[i].toString(),
+          timestamp: Math.floor(date.getTime() / 1000),
+          date: date.toISOString().split('T')[0]
+        });
+      }
+
+      const totalValue = historyArray.reduce((sum, item) => {
+        return sum + (parseInt(item.valor) || 0);
+      }, 0).toString();
+
+      metricsData[metricConfig.name] = {
+        totalValue: totalValue,
+        historicalData: historyArray,
+        totalPoints: historyArray.length
+      };
+
+      console.log(`  ✅ ${metricConfig.name}: ${historyArray.length} puntos | Total: ${totalValue}`);
+    } else {
+      metricsData[metricConfig.name] = {
+        totalValue: '0',
+        historicalData: [],
+        totalPoints: 0
+      };
+
+      console.log(`  ⚠️  ${metricConfig.name}: Sin datos`);
+    }
+  } catch (e) {
+    console.error(`  ❌ Error ${metricConfig.name}:`, e.message);
+    metricsData[metricConfig.name] = {
+      totalValue: '0',
+      historicalData: [],
+      totalPoints: 0
+    };
+  }
+}
+
+/**
+ * Extrae métricas históricas de TikTok
+ */
+async function extractTikTokDataHistorical(tiktokCookies, period = 28) {
+  if (!tiktokCookies) {
+    throw new Error("TikTok cookies requeridas");
+  }
+
+  const browser = await puppeteer.connect({
+    browserWSEndpoint: `wss://production-sfo.browserless.io?token=${TOKEN}`,
+  });
+
+  const page = await browser.newPage();
+  await page.setViewport({ width: 1920, height: 1080 });
+  
+  const cookieArray = parseCookies(tiktokCookies, '.tiktok.com');
+  await page.setCookie(...cookieArray);
+
+  const url = `https://www.tiktok.com/tiktokstudio?dateRange=%7B%22type%22%3A%22fixed%22%2C%22pastDay%22%3A${period}%7D&activeAnalyticsMetric=shares`;
+  
+  console.log(`📊 Extrayendo datos de TikTok (Período: últimos ${period} días)...`);
+  
+  await page.goto(url, {
+    waitUntil: 'networkidle2',
+    timeout: 60000
+  });
+
+  await sleep(3000);
+
+  const metricsData = {};
+  
+  const metrics = [
+    { name: 'visualizaciones_videos', label: 'Visualizaciones de videos' },
+    { name: 'visualizaciones_perfil', label: 'Visualizaciones de perfil' },
+    { name: 'me_gusta', label: 'Me gusta' },
+    { name: 'comentarios', label: 'Comentarios' },
+    { name: 'veces_compartido', label: 'Veces compartido' }
+  ];
+
+  console.log('📈 Extrayendo valores históricos de cada métrica...\n');
+
+  // Procesar métricas en paralelo (máximo 2 simultáneamente)
+  const batchSize = 2;
+  for (let i = 0; i < metrics.length; i += batchSize) {
+    const batch = metrics.slice(i, i + batchSize);
+    
+    await Promise.all(batch.map(metricConfig => extractTikTokMetric(page, metricConfig, period, metricsData)));
+  }
+
+  await browser.close();
+  
+  return metricsData;
+}
+
+// Vercel serverless handler
+module.exports = async (req, res) => {
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  // Solo POST
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  try {
+    const rawBody = req.body;
+    let { tiktokCookies, period = 'LAST_28D' } = rawBody;
+
+    if (!tiktokCookies) {
+      return res.status(400).json({ 
+        error: 'tiktokCookies requeridas',
+        received: Object.keys(rawBody)
+      });
+    }
+
+    // Normalizar período a número de días
+    const periodMap = {
+      'LAST_7D': 7,
+      'LAST_28D': 28,
+      'LAST_90D': 90,
+      'THIS_MONTH': 28,
+      'LAST_MONTH': 28
+    };
+
+    const tiktokPeriod = periodMap[period] || 28;
+
+    console.log('\n========================================');
+    console.log('   EXTRACCIÓN TIKTOK');
+    console.log('========================================\n');
+
+    // Extraer TikTok
+    const tiktokData = await extractTikTokDataHistorical(tiktokCookies, tiktokPeriod);
+
+    const results = {
+      success: true,
+      data: {
+        timestamp: new Date().toISOString(),
+        period: period,
+        platform: 'TikTok',
+        metrics: tiktokData
+      }
+    };
+
+    console.log('✅ Extracción completada\n');
+
+    return res.status(200).json(results);
+  } catch (error) {
+    console.error('❌ Error:', error.message);
+    return res.status(500).json({ 
+      error: error.message,
+      success: false
+    });
+  }
+};

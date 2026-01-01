@@ -551,27 +551,26 @@ module.exports = async (req, res) => {
       results.platforms.instagram = { error: error.message, success: false };
     }
 
-    // Extraer TikTok
-    if (tiktokCookies && includeTikTok) {
-      try {
-        console.log('⏳ TikTok...');
-        const tiktokPeriod = 28; // 28 días por defecto
-        const tiktokRawData = await extractTikTokData(tiktokCookies, tiktokPeriod);
-        
-        // Transformar formato de TikTok para coincidir con Facebook/Instagram
-        results.platforms.tiktok = {
-          platform: 'TikTok',
-          period: 'LAST_28D',
-          extractedAt: new Date().toISOString(),
-          metrics: tiktokRawData
-        };
-        
-        console.log('✅ TikTok completado\n');
-      } catch (error) {
-        console.error('❌ Error en TikTok:', error.message);
-        results.platforms.tiktok = { error: error.message, success: false };
-      }
-    }
+    // Extraer TikTok (ahora en endpoint separado /api/extract-tiktok)
+    // if (tiktokCookies && includeTikTok) {
+    //   try {
+    //     console.log('⏳ TikTok...');
+    //     const tiktokPeriod = 28;
+    //     const tiktokRawData = await extractTikTokData(tiktokCookies, tiktokPeriod);
+    //     
+    //     results.platforms.tiktok = {
+    //       platform: 'TikTok',
+    //       period: 'LAST_28D',
+    //       extractedAt: new Date().toISOString(),
+    //       metrics: tiktokRawData
+    //     };
+    //     
+    //     console.log('✅ TikTok completado\n');
+    //   } catch (error) {
+    //     console.error('❌ Error en TikTok:', error.message);
+    //     results.platforms.tiktok = { error: error.message, success: false };
+    //   }
+    // }
 
     console.log('✅ Extracción completada\n');
 
