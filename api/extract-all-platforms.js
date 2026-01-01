@@ -287,13 +287,62 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
   };
 }
 
+/**
+ * Normaliza cookies sin importar cómo lleguen (string, objeto, array)
+ * Maneja stringificación múltiple de n8n
+ */
+function normalizeCookies(input) {
+  if (!input) return null;
+  
+  let parsed = input;
+  
+  // Si es string, intentar parsearlo recursivamente
+  if (typeof input === 'string') {
+    // Limpiar espacios y caracteres raros
+    let cleaned = input.trim();
+    
+    // Intentar parsear JSON múltiples veces (en caso de doble stringificación)
+    let attempts = 0;
+    while (typeof parsed === 'string' && attempts < 5) {
+      try {
+        parsed = JSON.parse(parsed);
+        attempts++;
+      } catch (e) {
+        break;
+      }
+    }
+    
+    // Si sigue siendo string, ya no es JSON válido
+    if (typeof parsed === 'string') {
+      console.error('⚠️  No se pudo parsear como JSON:', parsed.substring(0, 50));
+      return null;
+    }
+  }
+  
+  // Si llegó hasta aquí, parsed es array u objeto
+  return parsed;
+}
+
 // Vercel API Handler
 module.exports = async (req, res) => {
   try {
-    const { cookies, tiktokCookies, period = 'LAST_28D', businessId = '176166689688823', assetId = '8555156748', includeTikTok = false } = req.body;
+    const rawBody = req.body;
+    let { cookies, tiktokCookies, period = 'LAST_28D', businessId = '176166689688823', assetId = '8555156748', includeTikTok = false } = rawBody;
+    
+    // Normalizar cookies de Facebook
+    cookies = normalizeCookies(cookies);
     
     if (!cookies) {
-      return res.status(400).json({ error: 'Cookies are required' });
+      return res.status(400).json({ 
+        error: 'Cookies are required and must be valid JSON',
+        received: typeof rawBody.cookies,
+        tip: 'Cookies deben ser: array de objetos {name, value, ...} O objeto {key: value}'
+      });
+    }
+    
+    // Normalizar cookies de TikTok si existen
+    if (tiktokCookies) {
+      tiktokCookies = normalizeCookies(tiktokCookies);
     }
 
     console.log('\n🚀 Iniciando extracción multi-plataforma...\n');

@@ -19,12 +19,15 @@ async function sleep(ms) {
 function parseCookies(cookies, domain = '.facebook.com') {
   if (!cookies) return [];
   
-  // Si es string, parsearlo
+  // Si es string, limpiar y parsear
   if (typeof cookies === 'string') {
     try {
-      cookies = JSON.parse(cookies);
+      // Limpiar saltos de línea literales y espacios extras
+      const cleanedString = cookies.replace(/\\n/g, '').trim();
+      cookies = JSON.parse(cleanedString);
     } catch (e) {
       console.error('Error parseando cookies:', e.message);
+      console.error('String que falló:', cookies.substring(0, 200));
       return [];
     }
   }
