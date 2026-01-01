@@ -101,94 +101,63 @@ async function extractTikTokMetric(page, metricConfig, period, metricsData, metr
   try {
     console.log(`\n📍 Extrayendo: ${metricConfig.name} (índice: ${metricIndex})`);
     
-    // PASO 1: Encontrar y hacer click en la tarjeta de la métrica
-    const clickSuccess = await page.evaluate((label, index) => {
-      // Buscar todas las tarjetas de métrica (divs con clases de contenedor)
-      const metricCards = Array.from(document.querySelectorAll('div, section, article'))
-        .filter(el => {
-          const text = el.textContent?.trim() || '';
-          return text.includes(label);
-        });
-      
-      if (metricCards.length === 0) {
-        console.log(`  [DOM] No se encontró tarjeta para: ${label}`);
-        return { success: false, clickedCardText: '' };
-      }
-      
-      // Tomar la tarjeta más específica (la más pequeña con el label)
-      const specificCard = metricCards.reduce((smallest, current) => 
-        current.textContent.length < smallest.textContent.length ? current : smallest
-      );
-      
-      // Simular click
-      specificCard.click();
-      
-      return {
-        success: true,
-        clickedCardText: specificCard.textContent.slice(0, 50),
-        cardSize: specificCard.textContent.length
-      };
-    }, metricConfig.label, metricIndex);
-
-    if (clickSuccess.success) {
-      console.log(`  ✅ Click en tarjeta: ${clickSuccess.clickedCardText}...`);
-      // Esperar a que se actualice el gráfico
-      await sleep(500);
+    // PASO 1: Encontrar la tarjeta de métrica y hacer click en ella
+    // Primero, encontrar el elemento usando page.$() que es más confiable
+    const metricElement = await page.$(
+      `//div[contains(text(), '${metricConfig.label}')]`,
+    );
+    
+    if (metricElement) {
+      console.log(`  ✅ Encontrada tarjeta, haciendo click...`);
+      await metricElement.click();
+      await sleep(800); // Esperar a que el gráfico se actualice
     } else {
-      console.log(`  ⚠️  No se pudo hacer click en tarjeta`);
+      console.log(`  ⚠️  No se encontró elemento para: ${metricConfig.label}`);
     }
 
-    // PASO 2: Extraer los datos del gráfico mostrado
-    let historicalData = await page.evaluate(() => {
-      const result = {
-        dailyValues: [],
-        totalValue: null
-      };
-
-      // Buscar el número grande (total) en la tarjeta seleccionada
-      const allNumbers = [];
-      document.querySelectorAll('*').forEach(el => {
-        const text = el.textContent?.trim();
-        if (text && /^[\d,]+$/.test(text)) {
-          const num = parseInt(text.replace(/,/g, ''));
-          if (!isNaN(num) && num > 0) {
-            allNumbers.push(num);
-          }
-        }
-      });
+    // PASO 2: Extraer el total desde el DOM
+    const domData = await page.evaluate((label) => {
+      const result = { totalValue: null, found: false };
       
-      if (allNumbers.length > 0) {
-        result.totalValue = Math.max(...allNumbers);
+      // Buscar elementos que contienen el label
+      const allElements = Array.from(document.querySelectorAll('*'))
+        .filter(el => el.textContent?.includes(label));
+      
+      // Del más específico al más general
+      for (let el of allElements.reverse()) {
+        const parentText = el.parentElement?.textContent || '';
+        const numbers = parentText.match(/\d+/g) || [];
+        
+        if (numbers.length > 0) {
+          const sorted = numbers.map(Number).sort((a, b) => b - a);
+          result.totalValue = sorted[0]; // El mayor es probablemente el total
+          result.found = true;
+          break;
+        }
       }
-
-      // Buscar datos del gráfico usando Vision es más confiable
-      // Aquí solo intentamos con estructura del DOM como fallback
-      const circles = document.querySelectorAll('circle, [role*="graphics"]');
-      if (circles.length > 10) {
-        // Probablemente hay un gráfico
-        result.dailyValues = Array(28).fill(1); // Placeholder
-      }
-
+      
       return result;
-    });
+    }, metricConfig.label);
 
-    // PASO 3: Usar Vision para extraer valores del gráfico (más confiable)
-    console.log(`  📸 Capturando screenshot para análisis con Vision...`);
+    console.log(`  Total desde DOM: ${domData.totalValue}`);
+
+    // PASO 3: Usar Vision para extraer valores del gráfico
+    console.log(`  📸 Capturando screenshot para análisis...`);
     const screenshot = await page.screenshot({ encoding: 'base64' });
     
-    const totalFromDOM = historicalData.totalValue;
-    const prompt = `Extrae los ${period} valores del gráfico de TikTok Studio.
+    const totalFromDOM = domData.totalValue || 0;
+    const prompt = `Extrae los valores del gráfico de TikTok Studio.
+
+Total mostrado: ${totalFromDOM}
+Período: ${period} días
 
 Instrucciones:
-1. El número GRANDE mostrado es el TOTAL: ${totalFromDOM}
-2. Lee el gráfico de IZQUIERDA a DERECHA (día antiguo → reciente)
-3. Extrae EXACTAMENTE ${period} valores (o menos si hay vacíos)
-4. Cada punto/barra = 1 día
+1. Lee de IZQUIERDA a DERECHA (día antiguo → reciente)
+2. Extrae EXACTAMENTE ${period} valores
+3. La suma DEBE ser ${totalFromDOM}
 
-RESPONDE SOLO CON ARRAY JSON:
-[num, num, num, ...]
-
-La suma DEBE ser ${totalFromDOM}`;
+RESPONDE SOLO JSON:
+[num, num, num, ...]`;
     
     try {
       const response = await openai.chat.completions.create({
@@ -218,65 +187,50 @@ La suma DEBE ser ${totalFromDOM}`;
         const extractedArray = JSON.parse(arrayMatch[0]);
         const sum = extractedArray.reduce((a, b) => a + b, 0);
         console.log(`  ✅ Vision: ${extractedArray.length} puntos, suma: ${sum}`);
-        historicalData.dailyValues = extractedArray;
+        
+        // PASO 4: Construir array histórico con fechas
+        const historyArray = [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        for (let i = 0; i < extractedArray.length; i++) {
+          const daysAgo = extractedArray.length - 1 - i;
+          const date = new Date(today);
+          date.setDate(date.getDate() - daysAgo);
+          
+          if (date > today) continue;
+          
+          const dayNum = date.getDate();
+          const monthNum = date.getMonth();
+          const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+          const fechaStr = `${dayNum} de ${months[monthNum]}`;
+          
+          historyArray.push({
+            fecha: fechaStr,
+            valor: extractedArray[i].toString(),
+            timestamp: Math.floor(date.getTime() / 1000),
+            date: date.toISOString().split('T')[0]
+          });
+        }
+
+        metricsData[metricConfig.name] = {
+          totalValue: sum.toString(),
+          historicalData: historyArray,
+          totalPoints: historyArray.length
+        };
+
+        console.log(`  ✅ ${metricConfig.name}: ${historyArray.length} puntos | Total: ${sum}`);
       } else {
-        console.log(`  ⚠️  Vision no encontró array válido: ${content.slice(0, 60)}`);
+        console.log(`  ⚠️  Vision no devolvió array válido: ${content.slice(0, 60)}`);
+        throw new Error('Invalid Vision response');
       }
     } catch (e) {
       console.error(`  Error Vision:`, e.message);
-    }
-
-    // Armar datos históricos
-    if (historicalData.dailyValues.length > 0) {
-      const historyArray = [];
-      const today = new Date();
-      today.setHours(0, 0, 0, 0); // Normalizar a inicio del día
-      
-      // Tomar solo los últimos 'period' valores (en caso Vision devuelva más)
-      const valuesToUse = historicalData.dailyValues.slice(-period);
-      
-      for (let i = 0; i < valuesToUse.length; i++) {
-        const daysAgo = valuesToUse.length - 1 - i;
-        const date = new Date(today);
-        date.setDate(date.getDate() - daysAgo);
-        
-        // Saltar cualquier fecha futura
-        if (date > today) {
-          continue;
-        }
-        
-        const dayNum = date.getDate();
-        const monthNum = date.getMonth();
-        const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-        const fechaStr = `${dayNum} de ${months[monthNum]}`;
-        
-        historyArray.push({
-          fecha: fechaStr,
-          valor: valuesToUse[i].toString(),
-          timestamp: Math.floor(date.getTime() / 1000),
-          date: date.toISOString().split('T')[0]
-        });
-      }
-
-      const totalValue = historyArray.reduce((sum, item) => {
-        return sum + (parseInt(item.valor) || 0);
-      }, 0).toString();
-
-      metricsData[metricConfig.name] = {
-        totalValue: totalValue,
-        historicalData: historyArray,
-        totalPoints: historyArray.length
-      };
-
-      console.log(`  ✅ ${metricConfig.name}: ${historyArray.length} puntos | Total: ${totalValue}`);
-    } else {
       metricsData[metricConfig.name] = {
         totalValue: '0',
         historicalData: [],
         totalPoints: 0
       };
-
-      console.log(`  ⚠️  ${metricConfig.name}: Sin datos`);
     }
   } catch (e) {
     console.error(`  ❌ Error ${metricConfig.name}:`, e.message);
