@@ -12,6 +12,44 @@ async function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Parsea cookies de cualquier formato (string JSON, objeto, array)
+ */
+function parseCookies(cookies, domain = '.facebook.com') {
+  if (!cookies) return [];
+  
+  // Si es string, parsearlo
+  if (typeof cookies === 'string') {
+    try {
+      cookies = JSON.parse(cookies);
+    } catch (e) {
+      console.error('Error parseando cookies:', e.message);
+      return [];
+    }
+  }
+  
+  // Si es array, retornarlo con domain si falta
+  if (Array.isArray(cookies)) {
+    return cookies.map(cookie => ({
+      ...cookie,
+      domain: cookie.domain || domain,
+      path: cookie.path || '/'
+    }));
+  }
+  
+  // Si es objeto, convertir a array
+  if (typeof cookies === 'object') {
+    return Object.entries(cookies).map(([name, value]) => ({
+      name,
+      value,
+      domain,
+      path: '/'
+    }));
+  }
+  
+  return [];
+}
+
 async function extractMetaData(cookies, url, platform) {
   const browser = await puppeteer.connect({
     browserWSEndpoint: `wss://production-sfo.browserless.io?token=${TOKEN}`,
@@ -172,16 +210,8 @@ async function extractTikTokData(tiktokCookies, period = 7) {
   
   await page.setViewport({ width: 1920, height: 1080 });
   
-  // Convertir cookies a array si es necesario
-  let cookieArray = tiktokCookies;
-  if (typeof tiktokCookies === 'object' && !Array.isArray(tiktokCookies)) {
-    cookieArray = Object.entries(tiktokCookies).map(([name, value]) => ({
-      name,
-      value,
-      domain: '.tiktok.com',
-      path: '/'
-    }));
-  }
+  // Parsear cookies (maneja strings JSON, objetos y arrays)
+  const cookieArray = parseCookies(tiktokCookies, '.tiktok.com');
   
   await page.setCookie(...cookieArray);
 
@@ -289,16 +319,8 @@ module.exports = async function handler(req, res) {
         continue;
       }
       
-      // Convertir cookies a array si es necesario
-      let cookieArray = plat_cookies;
-      if (typeof plat_cookies === 'object' && !Array.isArray(plat_cookies)) {
-        // Es un objeto, convertir a array
-        cookieArray = Object.entries(plat_cookies).map(([name, value]) => ({
-          name,
-          value,
-          domain: plat === 'tiktok' ? '.tiktok.com' : '.facebook.com'
-        }));
-      }
+      // Parsear cookies (maneja strings JSON, objetos y arrays)
+      const cookieArray = parseCookies(plat_cookies, plat === 'tiktok' ? '.tiktok.com' : '.facebook.com');
       
       if (plat === 'tiktok') {
         // Para TikTok, usar con período

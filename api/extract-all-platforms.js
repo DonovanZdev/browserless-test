@@ -12,6 +12,44 @@ async function sleep(ms) {
 }
 
 /**
+ * Parsea cookies de cualquier formato (string JSON, objeto, array)
+ */
+function parseCookies(cookies, domain = '.facebook.com') {
+  if (!cookies) return [];
+  
+  // Si es string, parsearlo
+  if (typeof cookies === 'string') {
+    try {
+      cookies = JSON.parse(cookies);
+    } catch (e) {
+      console.error('Error parseando cookies:', e.message);
+      return [];
+    }
+  }
+  
+  // Si es array, retornarlo con domain si falta
+  if (Array.isArray(cookies)) {
+    return cookies.map(cookie => ({
+      ...cookie,
+      domain: cookie.domain || domain,
+      path: cookie.path || '/'
+    }));
+  }
+  
+  // Si es objeto, convertir a array
+  if (typeof cookies === 'object') {
+    return Object.entries(cookies).map(([name, value]) => ({
+      name,
+      value,
+      domain,
+      path: '/'
+    }));
+  }
+  
+  return [];
+}
+
+/**
  * Extrae métricas de TikTok usando Vision de OpenAI
  */
 async function extractTikTokData(tiktokCookies, period = 28) {
@@ -26,16 +64,8 @@ async function extractTikTokData(tiktokCookies, period = 28) {
   const page = await browser.newPage();
   await page.setViewport({ width: 1920, height: 1080 });
   
-  // Convertir cookies a array si es necesario
-  let cookieArray = tiktokCookies;
-  if (typeof tiktokCookies === 'object' && !Array.isArray(tiktokCookies)) {
-    cookieArray = Object.entries(tiktokCookies).map(([name, value]) => ({
-      name,
-      value,
-      domain: '.tiktok.com',
-      path: '/'
-    }));
-  }
+  // Parsear cookies (maneja strings JSON, objetos y arrays)
+  const cookieArray = parseCookies(tiktokCookies, '.tiktok.com');
   
   await page.setCookie(...cookieArray);
 
@@ -105,14 +135,8 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
   const page = await browser.newPage();
   await page.setViewport({ width: 1920, height: 1080 });
   
-  let cookieArray = cookies;
-  if (typeof cookies === 'object' && !Array.isArray(cookies)) {
-    cookieArray = Object.entries(cookies).map(([name, value]) => ({
-      name,
-      value,
-      domain: '.facebook.com'
-    }));
-  }
+  // Parsear cookies (maneja strings JSON, objetos y arrays)
+  const cookieArray = parseCookies(cookies, '.facebook.com');
   
   await page.setCookie(...cookieArray);
 
