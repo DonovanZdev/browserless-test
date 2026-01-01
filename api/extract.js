@@ -14,6 +14,7 @@ async function sleep(ms) {
 
 /**
  * Parsea cookies de cualquier formato (string JSON, objeto, array)
+ * y limpia campos no válidos para Puppeteer
  */
 function parseCookies(cookies, domain = '.facebook.com') {
   if (!cookies) return [];
@@ -28,14 +29,24 @@ function parseCookies(cookies, domain = '.facebook.com') {
     }
   }
   
-  // Si es array, retornarlo tal cual
-  if (Array.isArray(cookies)) {
-    return cookies;
-  }
+  let cookieArray = [];
   
+  // Si es array, procesarlo
+  if (Array.isArray(cookies)) {
+    cookieArray = cookies.map(cookie => ({
+      name: cookie.name,
+      value: cookie.value,
+      domain: cookie.domain || domain,
+      path: cookie.path || '/',
+      ...(cookie.secure !== undefined && { secure: cookie.secure }),
+      ...(cookie.httpOnly !== undefined && { httpOnly: cookie.httpOnly }),
+      ...(cookie.expires !== undefined && { expires: cookie.expires }),
+      ...(cookie.sameSite && { sameSite: cookie.sameSite })
+    }));
+  } 
   // Si es objeto, convertir a array de cookies
-  if (typeof cookies === 'object') {
-    return Object.entries(cookies).map(([name, value]) => ({
+  else if (typeof cookies === 'object') {
+    cookieArray = Object.entries(cookies).map(([name, value]) => ({
       name,
       value: String(value),
       domain,
@@ -43,7 +54,7 @@ function parseCookies(cookies, domain = '.facebook.com') {
     }));
   }
   
-  return [];
+  return cookieArray;
 }
 
 async function extractMetaData(cookies, url, platform) {
