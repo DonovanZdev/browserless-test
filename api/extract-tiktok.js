@@ -138,8 +138,30 @@ async function extractTikTokMetric(page, metricConfig, period, metricsData, metr
     let historicalData = await page.evaluate(() => {
       const result = {
         dailyValues: [],
-        dates: []
+        dates: [],
+        totalValue: null  // Capturar el total mostrado en UI
       };
+
+      // PRIMERO: Extraer el número total mostrado en la tarjeta de la métrica
+      // Este es el número grande mostrado encima del gráfico
+      const allText = document.body.innerText;
+      const regex = /(\d+)\s*\(.*?%\)|Visualizaciones|Me gusta|Comentarios|Veces/;
+      
+      // Buscar el número más grande visible en la página (probablemente el total)
+      const numbers = [];
+      document.querySelectorAll('span, div').forEach(el => {
+        const text = el.innerText?.trim();
+        if (text && /^\d+$/.test(text) && text.length > 0) {
+          const num = parseInt(text);
+          if (num > 0) numbers.push({ num, el });
+        }
+      });
+      
+      // El número más grande es probablemente el total
+      if (numbers.length > 0) {
+        numbers.sort((a, b) => b.num - a.num);
+        result.totalValue = numbers[0].num;
+      }
 
       // Estrategia 1: Buscar SVG circles con tooltips o aria-labels
       const circles = document.querySelectorAll('circle[role="presentation"], circle[data-testid], svg circle');
@@ -221,17 +243,20 @@ async function extractTikTokMetric(page, metricConfig, period, metricsData, metr
       
       const screenshot = await page.screenshot({ encoding: 'base64' });
       
-      const prompt = `IMPORTANTE: Lee cuidadosamente el gráfico de TikTok Studio Analytics.
+      const prompt = `TAREA CRÍTICA: Extrae los valores EXACTOS del gráfico de TikTok Studio.
 
-Extrae TODOS los valores diarios en ORDEN CRONOLÓGICO (de izquierda a derecha, del día más antiguo al más reciente).
+INSTRUCCIONES:
+1. Identifica el NÚMERO GRANDE mostrado en la tarjeta (ej: 40, 5, 3, 1, 0) - este es el TOTAL
+2. El número grande debe ser la SUMA de todos los valores del gráfico
+3. Lee el gráfico de IZQUIERDA a DERECHA (día más antiguo → día más reciente)
+4. Si ves barras o líneas, cada punto representa UN día
+5. Extrae EXACTAMENTE ${period} valores (o menos si hay vacíos)
 
-Si ves un gráfico de líneas o barras, lee cada punto/barra de izquierda a derecha.
-Si los valores están mostrados en hover/tooltip, intenta extraer los máximos de cada sección.
+FORMATO DE RESPUESTA:
+Responde SOLO con un array JSON numérico, SIN texto adicional.
+Ejemplo: [0, 0, 1, 0, 2, 5, 3, 1]
 
-Responde SOLO con un array JSON numérico en este exacto formato:
-[0, 1, 0, 0, 2, 3, 1, 0, 0, 1, 2, 1, 0, 0, 5, 4, 3, 2, 1, 0, 0, 0, 1, 0, 1, 1, 0, 40]
-
-NO incluyas ningún texto adicional, SOLO el array JSON.`;
+El TOTAL debe sumar exactamente al número grande mostrado en la tarjeta.`;
       
       const response = await openai.chat.completions.create({
         model: "gpt-4o",
@@ -257,12 +282,13 @@ NO incluyas ningún texto adicional, SOLO el array JSON.`;
 
       try {
         const content = response.choices[0].message.content.trim();
-        console.log(`  Vision response para ${metricConfig.name}: ${content.slice(0, 100)}...`);
+        console.log(`  Vision response para ${metricConfig.name}: ${content.slice(0, 80)}...`);
         
         const arrayMatch = content.match(/\[\s*[\d\s,\-]*\]/);
         if (arrayMatch) {
           const extractedArray = JSON.parse(arrayMatch[0]);
-          console.log(`  ✅ Valores extraídos por Vision: ${extractedArray.length} puntos`);
+          const sum = extractedArray.reduce((a, b) => a + b, 0);
+          console.log(`  ✅ Valores extraídos: ${extractedArray.length} puntos, suma total: ${sum}`);
           historicalData.dailyValues = extractedArray;
         } else {
           console.log(`  ❌ No se encontró array JSON válido en response`);
