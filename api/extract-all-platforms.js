@@ -279,13 +279,20 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
       });
     }
     
-    // Calcular totalValue sumando values históricos (excepto Seguidores que es snapshot)
+    // Calcular totalValue sumando values históricos
+    // EXCEPTO Espectadores (cuentas únicas, no sumables) y Seguidores (snapshot)
     let calculatedTotal = metricValues.totalValue;
-    if (metricConfig.name !== 'Seguidores' && historicalData.length > 0) {
+    const nonAddableMetrics = ['Espectadores', 'Seguidores'];
+    
+    if (!nonAddableMetrics.includes(metricConfig.name) && historicalData.length > 0) {
       const sum = historicalData.reduce((acc, item) => {
         return acc + (parseInt(item.valor) || 0);
       }, 0);
       calculatedTotal = sum.toString();
+    } else if (metricConfig.name === 'Espectadores' && historicalData.length > 0) {
+      // Para Espectadores: usar el último valor (es una métrica de cuentas únicas)
+      const lastValue = historicalData[historicalData.length - 1]?.valor;
+      if (lastValue) calculatedTotal = lastValue;
     }
     
     metricsData[metricConfig.name] = {
