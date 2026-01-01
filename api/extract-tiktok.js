@@ -65,6 +65,18 @@ function parseCookies(cookies, domain = '.tiktok.com') {
  */
 async function extractTikTokMetric(page, metricConfig, period, metricsData) {
   try {
+    console.log(`\n📍 Extrayendo: ${metricConfig.name} (${metricConfig.label})`);
+    
+    // Verificar qué elemento vamos a clickear
+    const elementsBefore = await page.evaluate((label) => {
+      const buttons = Array.from(document.querySelectorAll('button, [role="button"], div')).filter(el => {
+        return el.textContent.includes(label);
+      });
+      return buttons.length;
+    }, metricConfig.label);
+    
+    console.log(`  Encontrados ${elementsBefore} elementos con label "${metricConfig.label}"`);
+    
     // Hacer click en la métrica para cambiar el gráfico
     await page.evaluate((label) => {
       const buttons = Array.from(document.querySelectorAll('button, [role="button"], div')).filter(el => {
@@ -129,8 +141,9 @@ async function extractTikTokMetric(page, metricConfig, period, metricsData) {
       const screenshot = await page.screenshot({ encoding: 'base64' });
       
       const prompt = `Extrae TODOS los valores diarios del gráfico visible para TikTok Studio ${metricConfig.label}. 
-        
-El gráfico muestra hasta ${period} días de datos. Responde SOLO con un array JSON:
+Lee los valores de IZQUIERDA a DERECHA empezando por el día más antiguo al más reciente.
+El gráfico muestra hasta ${period} días de datos. 
+Responde SOLO con un array JSON con los valores en orden cronológico (más antiguo primero):
 [numero1, numero2, numero3, ...]`;
       
       const response = await openai.chat.completions.create({
@@ -157,13 +170,21 @@ El gráfico muestra hasta ${period} días de datos. Responde SOLO con un array J
 
       try {
         const content = response.choices[0].message.content;
-        const arrayMatch = content.match(/\[\s*\d+[\s\d,]*\]/);
+        console.log(`  Vision response para ${metricConfig.name}: ${content}`);
+        
+        const arrayMatch = content.match(/\[\s*[\d\s,]*\]/);
         if (arrayMatch) {
-          historicalData.dailyValues = JSON.parse(arrayMatch[0]);
+          const extractedArray = JSON.parse(arrayMatch[0]);
+          console.log(`  Valores extraídos: ${JSON.stringify(extractedArray)}`);
+          historicalData.dailyValues = extractedArray;
+        } else {
+          console.log(`  ❌ No se encontró array en response: ${content}`);
         }
       } catch (e) {
         console.error(`  Error Vision para ${metricConfig.name}:`, e.message);
       }
+    } else {
+      console.log(`  ✅ DOM extraction: ${historicalData.dailyValues.length} puntos encontrados`);
     }
 
     // Armar datos históricos
