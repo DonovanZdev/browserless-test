@@ -152,42 +152,7 @@ async function extractTikTokMetric(page, metricConfig, period, metricsData, metr
       console.log(`  ⚠️  No se encontró número total, usando Vision para el gráfico`);
     }
 
-    // Ahora extraer los datos del gráfico
-    let historicalData = await page.evaluate(() => {
-      const result = {
-        dailyValues: [],
-        dates: [],
-        totalValue: null
-      };
-
-      // Buscar SVG circles
-      const circles = document.querySelectorAll('circle');
-      
-      if (circles.length > 0) {
-        const values = [];
-        
-        circles.forEach((circle) => {
-          const dataValue = circle.getAttribute('data-value') || 
-                           circle.getAttribute('aria-label') ||
-                           circle.getAttribute('title');
-          
-          if (dataValue) {
-            const numMatch = dataValue.match(/\d+/);
-            if (numMatch) {
-              values.push(parseInt(numMatch[0]));
-            }
-          }
-        });
-        
-        if (values.length > 0) {
-          result.dailyValues = values;
-        }
-      }
-
-      return result;
-    });
-
-    // Extraer todos los puntos del gráfico
+    // Extraer todos los puntos del gráfico y el número total
     let historicalData = await page.evaluate(() => {
       const result = {
         dailyValues: [],
