@@ -121,7 +121,7 @@ async function extractTikTokMetric(page, metricConfig, period, metricsData, metr
     
     console.log(`  🔗 Navegando a ${metricParam}...`);
     await page.goto(metricUrl, {
-      waitUntil: 'networkidle1',
+      waitUntil: 'networkidle2',
       timeout: 30000
     });
     
