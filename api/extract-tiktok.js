@@ -132,15 +132,19 @@ async function extractTikTokMetric(page, metricConfig, period, metricsData, metr
         dates: []
       };
 
+      // Estrategia 1: Buscar SVG circles con tooltips o aria-labels
       const circles = document.querySelectorAll('circle[role="presentation"], circle[data-testid], svg circle');
       
       if (circles.length > 0) {
         const values = [];
         
         circles.forEach((circle) => {
+          // Buscar valor en múltiples atributos
           const dataValue = circle.getAttribute('data-value') || 
                            circle.getAttribute('aria-label') ||
-                           circle.parentElement?.getAttribute('data-value');
+                           circle.getAttribute('title') ||
+                           circle.parentElement?.getAttribute('data-value') ||
+                           circle.parentElement?.getAttribute('aria-label');
           
           if (dataValue) {
             const numMatch = dataValue.match(/\d+/);
@@ -150,20 +154,53 @@ async function extractTikTokMetric(page, metricConfig, period, metricsData, metr
           }
         });
         
-        result.dailyValues = values;
+        // Si encontramos valores desde los atributos
+        if (values.length > 0) {
+          result.dailyValues = values;
+        } else {
+          // Estrategia alternativa: usar position y tamaño del círculo para inferir valor
+          // TikTok usa la altura/posición para representar el valor en un gráfico de barras
+          const yCoords = Array.from(circles).map(c => {
+            const cy = parseFloat(c.getAttribute('cy') || 0);
+            return cy;
+          });
+          
+          if (yCoords.length > 0) {
+            const maxY = Math.max(...yCoords);
+            const minY = Math.min(...yCoords);
+            const range = maxY - minY || 1;
+            
+            result.dailyValues = yCoords.map(cy => {
+              // Invertir porque SVG tiene Y invertida (0 en arriba)
+              const normalized = (maxY - cy) / range;
+              const value = Math.round(normalized * 100); // Escalar a 0-100
+              return value;
+            });
+          }
+        }
       }
 
+      // Si aún no tenemos datos, intentar con rects
       if (result.dailyValues.length === 0) {
-        const rects = document.querySelectorAll('rect[data-testid*="chart"], rect[data-value]');
+        const rects = document.querySelectorAll('rect[data-testid*="chart"], rect[data-value], rect[aria-label]');
+        const values = [];
+        
         rects.forEach(rect => {
-          const dataValue = rect.getAttribute('data-value');
+          const dataValue = rect.getAttribute('data-value') || 
+                           rect.getAttribute('aria-label') ||
+                           rect.getAttribute('title');
+          
           if (dataValue) {
             const numMatch = dataValue.match(/\d+/);
             if (numMatch) {
-              result.dailyValues.push(parseInt(numMatch[0]));
+              values.push(parseInt(numMatch[0]));
             }
           }
         });
+        
+        if (values.length > 0) {
+          result.dailyValues = values;
+        }
       }
 
       return result;
@@ -171,15 +208,21 @@ async function extractTikTokMetric(page, metricConfig, period, metricsData, metr
 
     // Si tenemos pocos datos, intentar Vision como fallback
     if (historicalData.dailyValues.length < 10) {
-      console.log(`  ⚠️  Pocos datos en DOM (${historicalData.dailyValues.length}), usando Vision...`);
+      console.log(`  ⚠️  DOM extraction: ${historicalData.dailyValues.length} puntos (usando Vision)`);
       
       const screenshot = await page.screenshot({ encoding: 'base64' });
       
-      const prompt = `Extrae TODOS los valores diarios del gráfico visible para TikTok Studio ${metricConfig.label}. 
-Lee los valores de IZQUIERDA a DERECHA empezando por el día más antiguo al más reciente.
-El gráfico muestra hasta ${period} días de datos. 
-Responde SOLO con un array JSON con los valores en orden cronológico (más antiguo primero):
-[numero1, numero2, numero3, ...]`;
+      const prompt = `IMPORTANTE: Lee cuidadosamente el gráfico de TikTok Studio Analytics.
+
+Extrae TODOS los valores diarios en ORDEN CRONOLÓGICO (de izquierda a derecha, del día más antiguo al más reciente).
+
+Si ves un gráfico de líneas o barras, lee cada punto/barra de izquierda a derecha.
+Si los valores están mostrados en hover/tooltip, intenta extraer los máximos de cada sección.
+
+Responde SOLO con un array JSON numérico en este exacto formato:
+[0, 1, 0, 0, 2, 3, 1, 0, 0, 1, 2, 1, 0, 0, 5, 4, 3, 2, 1, 0, 0, 0, 1, 0, 1, 1, 0, 40]
+
+NO incluyas ningún texto adicional, SOLO el array JSON.`;
       
       const response = await openai.chat.completions.create({
         model: "gpt-4o",
@@ -200,20 +243,20 @@ Responde SOLO con un array JSON con los valores en orden cronológico (más anti
             ],
           },
         ],
-        max_tokens: 300,
+        max_tokens: 500,
       });
 
       try {
-        const content = response.choices[0].message.content;
-        console.log(`  Vision response para ${metricConfig.name}: ${content}`);
+        const content = response.choices[0].message.content.trim();
+        console.log(`  Vision response para ${metricConfig.name}: ${content.slice(0, 100)}...`);
         
-        const arrayMatch = content.match(/\[\s*[\d\s,]*\]/);
+        const arrayMatch = content.match(/\[\s*[\d\s,\-]*\]/);
         if (arrayMatch) {
           const extractedArray = JSON.parse(arrayMatch[0]);
-          console.log(`  Valores extraídos: ${JSON.stringify(extractedArray)}`);
+          console.log(`  ✅ Valores extraídos por Vision: ${extractedArray.length} puntos`);
           historicalData.dailyValues = extractedArray;
         } else {
-          console.log(`  ❌ No se encontró array en response: ${content}`);
+          console.log(`  ❌ No se encontró array JSON válido en response`);
         }
       } catch (e) {
         console.error(`  Error Vision para ${metricConfig.name}:`, e.message);
