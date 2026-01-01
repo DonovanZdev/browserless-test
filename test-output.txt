@@ -1,0 +1,112 @@
+
+========================================
+   TIKTOK DATA COMPLETA
+========================================
+
+
+📊 VISUALIZACIONES_VIDEOS
+  Total: 0
+  Puntos: 0
+
+📊 VISUALIZACIONES_PERFIL
+  Total: 127
+  Puntos: 28
+  Desglose por día:
+    5 de dic: 0
+    6 de dic: 0
+    7 de dic: 0
+    8 de dic: 0
+    9 de dic: 0
+    10 de dic: 0
+    11 de dic: 0
+    12 de dic: 0
+    13 de dic: 0
+    14 de dic: 0
+    15 de dic: 0
+    16 de dic: 0
+    17 de dic: 0
+    18 de dic: 0
+    19 de dic: 0
+    20 de dic: 9
+    21 de dic: 9
+    22 de dic: 9
+    23 de dic: 9
+    24 de dic: 9
+    25 de dic: 9
+    26 de dic: 9
+    27 de dic: 9
+    28 de dic: 9
+    29 de dic: 9
+    30 de dic: 9
+    31 de dic: 9
+    1 de ene: 19
+
+📊 ME_GUSTA
+  Total: 0
+  Puntos: 0
+
+📊 COMENTARIOS
+  Total: 127
+  Puntos: 28
+  Desglose por día:
+    5 de dic: 0
+    6 de dic: 0
+    7 de dic: 0
+    8 de dic: 0
+    9 de dic: 0
+    10 de dic: 0
+    11 de dic: 0
+    12 de dic: 0
+    13 de dic: 0
+    14 de dic: 0
+    15 de dic: 0
+    16 de dic: 0
+    17 de dic: 0
+    18 de dic: 0
+    19 de dic: 0
+    20 de dic: 9
+    21 de dic: 9
+    22 de dic: 9
+    23 de dic: 9
+    24 de dic: 9
+    25 de dic: 9
+    26 de dic: 9
+    27 de dic: 9
+    28 de dic: 9
+    29 de dic: 9
+    30 de dic: 9
+    31 de dic: 9
+    1 de ene: 19
+
+📊 VECES_COMPARTIDO
+  Total: 127
+  Puntos: 28
+  Desglose por día:
+    5 de dic: 0
+    6 de dic: 0
+    7 de dic: 0
+    8 de dic: 0
+    9 de dic: 0
+    10 de dic: 0
+    11 de dic: 0
+    12 de dic: 0
+    13 de dic: 0
+    14 de dic: 0
+    15 de dic: 0
+    16 de dic: 0
+    17 de dic: 0
+    18 de dic: 0
+    19 de dic: 0
+    20 de dic: 9
+    21 de dic: 9
+    22 de dic: 9
+    23 de dic: 9
+    24 de dic: 9
+    25 de dic: 9
+    26 de dic: 9
+    27 de dic: 9
+    28 de dic: 9
+    29 de dic: 9
+    30 de dic: 9
+    31 de dic: 9
+    1 de ene: 19
