@@ -160,22 +160,27 @@ async function extractTikTokMetric(page, metricConfig, period, metricsData, metr
     
     const screenshot = await page.screenshot({ encoding: 'base64' });
     
-    const prompt = `Analiza el gráfico de TikTok Studio y extrae los valores diarios.
+    const prompt = `TAREA: Extrae los EXACTOS valores diarios del gráfico de TikTok Studio.
 
-TAREA:
-1. El NÚMERO GRANDE mostrado es: ${domData.totalValue}
-2. Localiza el GRÁFICO con puntos/barras
-3. Cuenta EXACTAMENTE ${period} puntos (IZQUIERDA a DERECHA = día antiguo a reciente)
-4. Lee el valor de CADA PUNTO
-5. Si no ves número, estima por tamaño/altura del punto
+NÚMERO TOTAL: ${domData.totalValue}
+DÍAS: ${period}
 
-CRÍTICO:
-- Suma debe ser exactamente ${domData.totalValue}
-- CADA número = 1 día
-- Responde SOLO JSON array
-- Nada de explicación
+INSTRUCCIONES:
+1. IDENTIFICA los PUNTOS AZULES en el gráfico (son círculos o puntos de datos)
+2. Los puntos están conectados por una línea azul
+3. LEE DE IZQUIERDA A DERECHA (fecha antigua → reciente)
+4. CADA PUNTO = 1 día
+5. Mira la ALTURA del punto en el eje Y o el NÚMERO cerca del punto
+6. Extrae el valor de CADA uno de los ${period} puntos
+7. El TOTAL de todos = ${domData.totalValue}
+8. Si ves 0 en un día, escribe 0
 
-[5, 2, 0, 8, 3, ...]`;
+EJEMPLO:
+Gráfico con puntos: o--o---o-o--o
+Valores por día:    [0, 1, 0, 2, 3, 0, 1, 0, 4, 0, 5, 2, 0]
+
+RESPONDE SOLO ARRAY JSON (${period} números):
+[1, 2, 0, 5, 3, ...]`;
     
     try {
       const response = await openai.chat.completions.create({
