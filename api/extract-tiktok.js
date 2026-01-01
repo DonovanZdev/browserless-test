@@ -96,8 +96,8 @@ function parseCookies(cookies, domain = '.tiktok.com') {
  * Extrae las métricas totales del dashboard principal de TikTok Studio
  */
 async function extractTotalsFromDashboard(page, period) {
-  // Navegar a la URL analytics para obtener los totales con mejor visibilidad
-  const analyticsUrl = `https://www.tiktok.com/tiktokstudio/analytics?activeAnalyticsMetric=video_views&dateRange=%7B%22type%22%3A%22fixed%22%2C%22pastDay%22%3A${period}%7D`;
+  // Navigate to the analytics page without specifying a metric (defaults to main overview)
+  const analyticsUrl = `https://www.tiktok.com/tiktokstudio/analytics?dateRange=%7B%22type%22%3A%22fixed%22%2C%22pastDay%22%3A${period}%7D`;
   
   console.log('  📊 Navegando a analytics para extraer totales...');
   console.log(`  URL: ${analyticsUrl}`);
