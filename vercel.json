@@ -1,9 +1,6 @@
 {
   "functions": {
-    "api/extract.js": {
-      "maxDuration": 60
-    },
-    "api/extract-with-exports.js": {
+    "api/extract-tiktok.js": {
       "maxDuration": 60
     },
     "api/extract-all-platforms.js": {

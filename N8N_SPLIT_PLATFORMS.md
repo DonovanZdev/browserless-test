@@ -1,9 +1,13 @@
 # Flujo en n8n: Separar TikTok, Facebook e Instagram a Sheets Diferentes
 
-## 📋 Estructura del Flujo
+## 📋 Estructura del Flujo (CON DOS REQUESTS HTTP)
 
 ```
-HTTP Request
+HTTP Request 1 (Facebook + Instagram)
+    ↓
+HTTP Request 2 (TikTok)
+    ↓
+Merge (Combinar ambos)
     ↓
 Function (Separar datos)
     ↓
@@ -17,7 +21,7 @@ Switch (Branching)
 
 ## 🔧 Configuración Nodo por Nodo
 
-### NODO 1: HTTP Request
+### NODO 1: HTTP Request - Facebook e Instagram
 
 **URL:**
 ```
@@ -34,7 +38,6 @@ Content-Type: application/json
 **Body (JSON):**
 ```json
 {
-  "tiktokCookies": {{ $env.TIKTOK_COOKIES }},
   "facebookCookies": {{ $env.FACEBOOK_COOKIES }},
   "instagramCookies": {{ $env.INSTAGRAM_COOKIES }},
   "period": "LAST_28D"
@@ -43,20 +46,83 @@ Content-Type: application/json
 
 ---
 
-### NODO 2: Function - Separar Plataformas
+### NODO 2: HTTP Request - TikTok
+
+**URL:**
+```
+https://browserless-test.vercel.app/api/extract-tiktok
+```
+
+**Method:** POST
+
+**Headers:**
+```
+Content-Type: application/json
+```
+
+**Body (JSON):**
+```json
+{
+  "tiktokCookies": {{ $env.TIKTOK_COOKIES }},
+  "period": "LAST_28D"
+}
+```
+
+---
+
+### NODO 3: Merge - Combinar ambos requests
+
+**Tipo:** Merge
+
+**Combine:** All Input Data
+
+Esto combinará ambos requests en un único array que se pasará al Function
+
+---
+
+### NODO 4: Function - Separar Plataformas
 
 **Script:**
 ```javascript
-// Obtener datos del request anterior
-const requestData = $input.first().json;
+// Obtener datos de AMBOS requests (HTTP 1 + HTTP 2 desde el Merge)
+let platforms = {};
+let timestamp = new Date().toISOString();
+let period = 'LAST_28D';
 
-if (!requestData.success || !requestData.data?.platforms) {
-  throw new Error('Invalid multi-platform response format');
+// Procesar ambos inputs del Merge
+const inputs = $input.all();
+
+inputs.forEach((input) => {
+  const data = input.json;
+  
+  if (data.success && data.data) {
+    // Si es un request de Facebook e Instagram
+    if (data.data.platforms?.facebook || data.data.platforms?.instagram) {
+      if (data.data.platforms.facebook) {
+        platforms.facebook = data.data.platforms.facebook;
+      }
+      if (data.data.platforms.instagram) {
+        platforms.instagram = data.data.platforms.instagram;
+      }
+      timestamp = data.data.timestamp || timestamp;
+      period = data.data.period || period;
+    }
+    // Si es un request de TikTok
+    else if (data.data.metrics) {
+      platforms.tiktok = data.data;
+      timestamp = data.data.timestamp || timestamp;
+      period = data.data.period || period;
+    }
+  }
+});
+
+if (Object.keys(platforms).length === 0) {
+  throw new Error('No valid platform data received from requests');
 }
 
-const platforms = requestData.data.platforms;
-const timestamp = requestData.data.timestamp;
-const period = requestData.data.period;
+if (Object.keys(platforms).length === 0) {
+  throw new Error('No valid platform data received from requests');
+}
 
 // Función para transformar datos de una plataforma
 function transformPlatformData(platformName, platformData) {
@@ -311,17 +377,226 @@ Expression: {{ $json.instagram.data }}
 
 ---
 
-## 🎯 Pasos en n8n
+## 🎯 Pasos Exactos en n8n (COPIA Y PEGA)
 
-1. **Crear Workflow** nuevo
-2. **Agregar HTTP Request** (obtener datos de todas las plataformas)
-3. **Agregar Function** (ejecutar script de separación)
-4. **Agregar Switch** (crear tres ramas)
-5. **Rama 1: Google Sheets TikTok**
-6. **Rama 2: Google Sheets Facebook**
-7. **Rama 3: Google Sheets Instagram**
-8. **Test** el workflow completo
-9. **Activar** para ejecución automática
+### Paso 1: Crear 2 HTTP Requests
+
+**Node 1: "Scraping Facebook e Insta"**
+```
+Method: POST
+URL: https://browserless-test.vercel.app/api/extract-all-platforms
+Body (JSON):
+{
+  "facebookCookies": {{ $env.FACEBOOK_COOKIES }},
+  "instagramCookies": {{ $env.INSTAGRAM_COOKIES }},
+  "period": "LAST_28D"
+}
+```
+
+**Node 2: "Scraping TikTok"**
+```
+Method: POST
+URL: https://browserless-test.vercel.app/api/extract-tiktok
+Body (JSON):
+{
+  "tiktokCookies": {{ $env.TIKTOK_COOKIES }},
+  "period": "LAST_28D"
+}
+```
+
+### Paso 2: Agregar Nodo Merge
+- **Type:** Merge
+- **Combine:** All Input Data
+- Conecta: HTTP Node 1 → Merge
+- Conecta: HTTP Node 2 → Merge
+
+### Paso 3: Agregar Function Node
+Copia TODO el contenido de [n8n-split-platforms.js](n8n-split-platforms.js) (desde línea 15 en adelante) en el Function node.
+
+O cópialo directo desde aquí:
+```javascript
+let platforms = {};
+let timestamp = new Date().toISOString();
+let period = 'LAST_28D';
+
+const inputs = $input.all();
+
+inputs.forEach((input) => {
+  const data = input.json;
+  
+  if (data.success && data.data) {
+    if (data.data.platforms?.facebook || data.data.platforms?.instagram) {
+      if (data.data.platforms.facebook) {
+        platforms.facebook = data.data.platforms.facebook;
+      }
+      if (data.data.platforms.instagram) {
+        platforms.instagram = data.data.platforms.instagram;
+      }
+      timestamp = data.data.timestamp || timestamp;
+      period = data.data.period || period;
+    }
+    else if (data.data.metrics) {
+      platforms.tiktok = data.data;
+      timestamp = data.data.timestamp || timestamp;
+      period = data.data.period || period;
+    }
+  }
+});
+
+if (Object.keys(platforms).length === 0) {
+  throw new Error('No valid platform data received from requests');
+}
+
+function transformPlatformData(platformName, platformData) {
+  if (!platformData?.metrics) return [];
+  
+  const metrics = platformData.metrics;
+  const daysMap = new Map();
+  
+  Object.entries(metrics).forEach(([metricName, metricData]) => {
+    if (!metricData.historicalData || metricData.historicalData.length === 0) return;
+    
+    metricData.historicalData.forEach((dayData) => {
+      const dateKey = dayData.date;
+      
+      if (!daysMap.has(dateKey)) {
+        daysMap.set(dateKey, {
+          fecha: dayData.fecha,
+          date: dateKey,
+          timestamp: dayData.timestamp
+        });
+      }
+      
+      daysMap.get(dateKey)[metricName] = dayData.valor;
+    });
+  });
+  
+  const rows = Array.from(daysMap.values())
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .map((day) => ({
+      'Fecha': day.fecha,
+      'Fecha ISO': day.date,
+      'Visualizaciones': parseInt(day.Visualizaciones || 0),
+      'Espectadores': parseInt(day.Espectadores || 0),
+      'Interacciones': parseInt(day.Interacciones || 0),
+      'Clics enlace': parseInt(day['Clics enlace'] || 0),
+      'Visitas': parseInt(day.Visitas || 0),
+      'Seguidores': parseInt(day.Seguidores || 0),
+      'Plataforma': platformName,
+      'Período': period,
+      'Fecha Extracción': new Date(timestamp).toISOString().split('T')[0]
+    }));
+  
+  return rows;
+}
+
+function transformTikTokData(platformData) {
+  if (!platformData?.metrics) return [];
+  
+  const metrics = platformData.metrics;
+  const daysMap = new Map();
+  
+  Object.entries(metrics).forEach(([metricName, metricData]) => {
+    if (!metricData.historicalData || metricData.historicalData.length === 0) return;
+    
+    metricData.historicalData.forEach((dayData) => {
+      const dateKey = dayData.date;
+      
+      if (!daysMap.has(dateKey)) {
+        daysMap.set(dateKey, {
+          fecha: dayData.fecha,
+          date: dateKey,
+          timestamp: dayData.timestamp
+        });
+      }
+      
+      daysMap.get(dateKey)[metricName] = dayData.valor;
+    });
+  });
+  
+  const rows = Array.from(daysMap.values())
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .map((day) => ({
+      'Fecha': day.fecha,
+      'Fecha ISO': day.date,
+      'Visualizaciones Videos': parseInt(day.visualizaciones_videos || 0),
+      'Visualizaciones Perfil': parseInt(day.visualizaciones_perfil || 0),
+      'Me Gusta': parseInt(day.me_gusta || 0),
+      'Comentarios': parseInt(day.comentarios || 0),
+      'Veces Compartido': parseInt(day.veces_compartido || 0),
+      'Plataforma': 'TikTok',
+      'Período': period,
+      'Fecha Extracción': new Date(timestamp).toISOString().split('T')[0]
+    }));
+  
+  return rows;
+}
+
+let facebookRows = [];
+if (platforms.facebook) {
+  facebookRows = transformPlatformData('Facebook', platforms.facebook);
+}
+
+let instagramRows = [];
+if (platforms.instagram) {
+  instagramRows = transformPlatformData('Instagram', platforms.instagram);
+}
+
+let tiktokRows = [];
+if (platforms.tiktok) {
+  tiktokRows = transformTikTokData(platforms.tiktok);
+}
+
+return {
+  tiktok: {
+    platform: 'TikTok',
+    data: tiktokRows,
+    rowCount: tiktokRows.length
+  },
+  facebook: {
+    platform: 'Facebook',
+    data: facebookRows,
+    rowCount: facebookRows.length
+  },
+  instagram: {
+    platform: 'Instagram',
+    data: instagramRows,
+    rowCount: instagramRows.length
+  }
+};
+```
+
+### Paso 4: Agregar 3 Google Sheets Nodes
+
+**Node 4A: Google Sheets - TikTok**
+```
+Operation: Append (or Clear All & Write)
+Spreadsheet: Tu Google Sheet
+Sheet Name: TikTok
+Data to Write: {{ $json.tiktok.data }}
+```
+
+**Node 4B: Google Sheets - Facebook**
+```
+Operation: Append (or Clear All & Write)
+Spreadsheet: Tu Google Sheet
+Sheet Name: Facebook
+Data to Write: {{ $json.facebook.data }}
+```
+
+**Node 4C: Google Sheets - Instagram**
+```
+Operation: Append (or Clear All & Write)
+Spreadsheet: Tu Google Sheet
+Sheet Name: Instagram
+Data to Write: {{ $json.instagram.data }}
+```
+
+Conecta Function Node → Google Sheets (1) → (2) → (3)
+
+## 🎯 Pasos en n8n (OLD - Guardado como referencia)
+
+
 
 ---
 
