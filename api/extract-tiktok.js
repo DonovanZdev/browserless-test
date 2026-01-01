@@ -94,188 +94,103 @@ function parseCookies(cookies, domain = '.tiktok.com') {
 
 /**
  * Extrae una métrica individual de TikTok
- * Estrategia: Extraer el número total directamente de la tarjeta de métrica
- * Sin necesidad de clickear en el gráfico
+ * Estrategia: Hacer click en la tarjeta de métrica para seleccionarla,
+ * luego extraer los datos del gráfico mostrado
  */
 async function extractTikTokMetric(page, metricConfig, period, metricsData, metricIndex) {
   try {
     console.log(`\n📍 Extrayendo: ${metricConfig.name} (índice: ${metricIndex})`);
     
-    // Extraer el número total de la tarjeta de métrica
-    const metricData = await page.evaluate((label, index) => {
-      // Buscar todos los elementos de la página
-      const allElements = document.querySelectorAll('*');
+    // PASO 1: Encontrar y hacer click en la tarjeta de la métrica
+    const clickSuccess = await page.evaluate((label, index) => {
+      // Buscar todas las tarjetas de métrica (divs con clases de contenedor)
+      const metricCards = Array.from(document.querySelectorAll('div, section, article'))
+        .filter(el => {
+          const text = el.textContent?.trim() || '';
+          return text.includes(label);
+        });
       
-      let totalValue = null;
-      let found = false;
-      
-      // Estrategia: buscar el label y luego el número que le sigue
-      for (let el of allElements) {
-        const text = el.textContent?.trim();
-        
-        // Verificar si este elemento contiene el label exacto o similar
-        if (text && (text === label || text.includes(label))) {
-          // Buscar en padres hasta encontrar un contenedor con un número grande
-          let parent = el.parentElement;
-          
-          for (let i = 0; i < 6 && parent; i++) {
-            // Buscar números en este nivel
-            const numberElements = Array.from(parent.querySelectorAll('*'))
-              .filter(e => {
-                const num = parseInt(e.textContent?.trim() || '');
-                return !isNaN(num) && num > 0 && e.textContent?.trim().match(/^\d+$/);
-              });
-            
-            if (numberElements.length > 0) {
-              // Tomar el número más grande o el primero
-              totalValue = Math.max(...numberElements.map(e => parseInt(e.textContent)));
-              found = true;
-              break;
-            }
-            
-            parent = parent.parentElement;
-          }
-          
-          if (found) break;
-        }
+      if (metricCards.length === 0) {
+        console.log(`  [DOM] No se encontró tarjeta para: ${label}`);
+        return { success: false, clickedCardText: '' };
       }
       
+      // Tomar la tarjeta más específica (la más pequeña con el label)
+      const specificCard = metricCards.reduce((smallest, current) => 
+        current.textContent.length < smallest.textContent.length ? current : smallest
+      );
+      
+      // Simular click
+      specificCard.click();
+      
       return {
-        totalValue: totalValue || 0,
-        found: found
+        success: true,
+        clickedCardText: specificCard.textContent.slice(0, 50),
+        cardSize: specificCard.textContent.length
       };
     }, metricConfig.label, metricIndex);
 
-    if (metricData.found) {
-      console.log(`  ✅ Total encontrado: ${metricData.totalValue}`);
+    if (clickSuccess.success) {
+      console.log(`  ✅ Click en tarjeta: ${clickSuccess.clickedCardText}...`);
+      // Esperar a que se actualice el gráfico
+      await sleep(500);
     } else {
-      console.log(`  ⚠️  No se encontró número total, usando Vision para el gráfico`);
+      console.log(`  ⚠️  No se pudo hacer click en tarjeta`);
     }
 
-    // Extraer todos los puntos del gráfico y el número total
+    // PASO 2: Extraer los datos del gráfico mostrado
     let historicalData = await page.evaluate(() => {
       const result = {
         dailyValues: [],
-        dates: [],
-        totalValue: null  // Capturar el total mostrado en UI
+        totalValue: null
       };
 
-      // PRIMERO: Extraer el número total mostrado en la tarjeta de la métrica
-      // Este es el número grande mostrado encima del gráfico
-      const allText = document.body.innerText;
-      const regex = /(\d+)\s*\(.*?%\)|Visualizaciones|Me gusta|Comentarios|Veces/;
-      
-      // Buscar el número más grande visible en la página (probablemente el total)
-      const numbers = [];
-      document.querySelectorAll('span, div').forEach(el => {
-        const text = el.innerText?.trim();
-        if (text && /^\d+$/.test(text) && text.length > 0) {
-          const num = parseInt(text);
-          if (num > 0) numbers.push({ num, el });
+      // Buscar el número grande (total) en la tarjeta seleccionada
+      const allNumbers = [];
+      document.querySelectorAll('*').forEach(el => {
+        const text = el.textContent?.trim();
+        if (text && /^[\d,]+$/.test(text)) {
+          const num = parseInt(text.replace(/,/g, ''));
+          if (!isNaN(num) && num > 0) {
+            allNumbers.push(num);
+          }
         }
       });
       
-      // El número más grande es probablemente el total
-      if (numbers.length > 0) {
-        numbers.sort((a, b) => b.num - a.num);
-        result.totalValue = numbers[0].num;
+      if (allNumbers.length > 0) {
+        result.totalValue = Math.max(...allNumbers);
       }
 
-      // Estrategia 1: Buscar SVG circles con tooltips o aria-labels
-      const circles = document.querySelectorAll('circle[role="presentation"], circle[data-testid], svg circle');
-      
-      if (circles.length > 0) {
-        const values = [];
-        
-        circles.forEach((circle) => {
-          // Buscar valor en múltiples atributos
-          const dataValue = circle.getAttribute('data-value') || 
-                           circle.getAttribute('aria-label') ||
-                           circle.getAttribute('title') ||
-                           circle.parentElement?.getAttribute('data-value') ||
-                           circle.parentElement?.getAttribute('aria-label');
-          
-          if (dataValue) {
-            const numMatch = dataValue.match(/\d+/);
-            if (numMatch) {
-              values.push(parseInt(numMatch[0]));
-            }
-          }
-        });
-        
-        // Si encontramos valores desde los atributos
-        if (values.length > 0) {
-          result.dailyValues = values;
-        } else {
-          // Estrategia alternativa: usar position y tamaño del círculo para inferir valor
-          // TikTok usa la altura/posición para representar el valor en un gráfico de barras
-          const yCoords = Array.from(circles).map(c => {
-            const cy = parseFloat(c.getAttribute('cy') || 0);
-            return cy;
-          });
-          
-          if (yCoords.length > 0) {
-            const maxY = Math.max(...yCoords);
-            const minY = Math.min(...yCoords);
-            const range = maxY - minY || 1;
-            
-            result.dailyValues = yCoords.map(cy => {
-              // Invertir porque SVG tiene Y invertida (0 en arriba)
-              const normalized = (maxY - cy) / range;
-              const value = Math.round(normalized * 100); // Escalar a 0-100
-              return value;
-            });
-          }
-        }
-      }
-
-      // Si aún no tenemos datos, intentar con rects
-      if (result.dailyValues.length === 0) {
-        const rects = document.querySelectorAll('rect[data-testid*="chart"], rect[data-value], rect[aria-label]');
-        const values = [];
-        
-        rects.forEach(rect => {
-          const dataValue = rect.getAttribute('data-value') || 
-                           rect.getAttribute('aria-label') ||
-                           rect.getAttribute('title');
-          
-          if (dataValue) {
-            const numMatch = dataValue.match(/\d+/);
-            if (numMatch) {
-              values.push(parseInt(numMatch[0]));
-            }
-          }
-        });
-        
-        if (values.length > 0) {
-          result.dailyValues = values;
-        }
+      // Buscar datos del gráfico usando Vision es más confiable
+      // Aquí solo intentamos con estructura del DOM como fallback
+      const circles = document.querySelectorAll('circle, [role*="graphics"]');
+      if (circles.length > 10) {
+        // Probablemente hay un gráfico
+        result.dailyValues = Array(28).fill(1); // Placeholder
       }
 
       return result;
     });
 
-    // Si tenemos pocos datos, intentar Vision como fallback
-    if (historicalData.dailyValues.length < 10) {
-      console.log(`  ⚠️  DOM extraction: ${historicalData.dailyValues.length} puntos (usando Vision)`);
-      
-      const screenshot = await page.screenshot({ encoding: 'base64' });
-      
-      const prompt = `TAREA CRÍTICA: Extrae los valores EXACTOS del gráfico de TikTok Studio.
+    // PASO 3: Usar Vision para extraer valores del gráfico (más confiable)
+    console.log(`  📸 Capturando screenshot para análisis con Vision...`);
+    const screenshot = await page.screenshot({ encoding: 'base64' });
+    
+    const totalFromDOM = historicalData.totalValue;
+    const prompt = `Extrae los ${period} valores del gráfico de TikTok Studio.
 
-INSTRUCCIONES:
-1. Identifica el NÚMERO GRANDE mostrado en la tarjeta (ej: 40, 5, 3, 1, 0) - este es el TOTAL
-2. El número grande debe ser la SUMA de todos los valores del gráfico
-3. Lee el gráfico de IZQUIERDA a DERECHA (día más antiguo → día más reciente)
-4. Si ves barras o líneas, cada punto representa UN día
-5. Extrae EXACTAMENTE ${period} valores (o menos si hay vacíos)
+Instrucciones:
+1. El número GRANDE mostrado es el TOTAL: ${totalFromDOM}
+2. Lee el gráfico de IZQUIERDA a DERECHA (día antiguo → reciente)
+3. Extrae EXACTAMENTE ${period} valores (o menos si hay vacíos)
+4. Cada punto/barra = 1 día
 
-FORMATO DE RESPUESTA:
-Responde SOLO con un array JSON numérico, SIN texto adicional.
-Ejemplo: [0, 0, 1, 0, 2, 5, 3, 1]
+RESPONDE SOLO CON ARRAY JSON:
+[num, num, num, ...]
 
-El TOTAL debe sumar exactamente al número grande mostrado en la tarjeta.`;
-      
+La suma DEBE ser ${totalFromDOM}`;
+    
+    try {
       const response = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
@@ -284,9 +199,7 @@ El TOTAL debe sumar exactamente al número grande mostrado en la tarjeta.`;
             content: [
               {
                 type: "image_url",
-                image_url: {
-                  url: `data:image/png;base64,${screenshot}`,
-                },
+                image_url: { url: `data:image/png;base64,${screenshot}` },
               },
               {
                 type: "text",
@@ -295,27 +208,22 @@ El TOTAL debe sumar exactamente al número grande mostrado en la tarjeta.`;
             ],
           },
         ],
-        max_tokens: 500,
+        max_tokens: 300,
       });
 
-      try {
-        const content = response.choices[0].message.content.trim();
-        console.log(`  Vision response para ${metricConfig.name}: ${content.slice(0, 80)}...`);
-        
-        const arrayMatch = content.match(/\[\s*[\d\s,\-]*\]/);
-        if (arrayMatch) {
-          const extractedArray = JSON.parse(arrayMatch[0]);
-          const sum = extractedArray.reduce((a, b) => a + b, 0);
-          console.log(`  ✅ Valores extraídos: ${extractedArray.length} puntos, suma total: ${sum}`);
-          historicalData.dailyValues = extractedArray;
-        } else {
-          console.log(`  ❌ No se encontró array JSON válido en response`);
-        }
-      } catch (e) {
-        console.error(`  Error Vision para ${metricConfig.name}:`, e.message);
+      const content = response.choices[0].message.content.trim();
+      const arrayMatch = content.match(/\[\s*[\d\s,]*\]/);
+      
+      if (arrayMatch) {
+        const extractedArray = JSON.parse(arrayMatch[0]);
+        const sum = extractedArray.reduce((a, b) => a + b, 0);
+        console.log(`  ✅ Vision: ${extractedArray.length} puntos, suma: ${sum}`);
+        historicalData.dailyValues = extractedArray;
+      } else {
+        console.log(`  ⚠️  Vision no encontró array válido: ${content.slice(0, 60)}`);
       }
-    } else {
-      console.log(`  ✅ DOM extraction: ${historicalData.dailyValues.length} puntos encontrados`);
+    } catch (e) {
+      console.error(`  Error Vision:`, e.message);
     }
 
     // Armar datos históricos
