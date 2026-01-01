@@ -126,7 +126,7 @@ async function extractTikTokMetric(page, metricConfig, period, metricsData, metr
     
     await sleep(2000); // Esperar más tiempo a que se renderice el gráfico
 
-    // PASO 2: Extraer el total desde el DOM
+    // PASO 2: Extraer el total desde el DOM usando múltiples estrategias
     const domData = await page.evaluate((label) => {
       const result = { totalValue: 0, allNumbers: [], foundLabel: false };
       
@@ -134,26 +134,32 @@ async function extractTikTokMetric(page, metricConfig, period, metricsData, metr
       const hasLabel = document.body.innerText.includes(label);
       result.foundLabel = hasLabel;
       
-      // Buscar todos los números en la página
+      // Estrategia 1: Buscar números grandes en divs específicos (tarjetas de métrica)
       const numberTexts = [];
+      
+      // Buscar en todas las áreas de texto
       document.querySelectorAll('*').forEach(el => {
         const text = el.innerText?.trim();
         if (text && /^\d+$/.test(text)) {
           const num = parseInt(text);
-          if (num > 0 && num < 999999) numberTexts.push(num);
+          // Incluir números razonables (0 a 999999)
+          if (num >= 0 && num < 999999) numberTexts.push(num);
         }
       });
       
-      // El más grande es probablemente el total
-      if (numberTexts.length > 0) {
-        result.totalValue = Math.max(...numberTexts);
-        result.allNumbers = numberTexts.slice(0, 10); // Top 10 para debug
+      // Filtrar duplicados y obtener el máximo
+      const uniqueNumbers = [...new Set(numberTexts)].sort((a, b) => b - a);
+      
+      if (uniqueNumbers.length > 0) {
+        // El número más grande es probablemente el total
+        result.totalValue = uniqueNumbers[0];
+        result.allNumbers = uniqueNumbers.slice(0, 10);
       }
       
       return result;
     }, metricConfig.label);
 
-    console.log(`  📊 Total desde DOM: ${domData.totalValue} | Found label: ${domData.foundLabel} | Numbers: ${domData.allNumbers.join(',')}`);
+    console.log(`  📊 Total desde DOM: ${domData.totalValue} | Números encontrados: ${domData.allNumbers.join(',')}`);;
 
     // PASO 3: Usar Vision para detectar puntos del gráfico
     let extractedArray = [];
@@ -219,21 +225,29 @@ RESPONDE SOLO ARRAY JSON (${period} números):
     }
 
     // Si Vision no funcionó, crear fallback simple
-    if (extractedArray.length === 0 && domData.totalValue > 0) {
-      // Distribuir el total uniformemente en los últimos días
-      extractedArray = new Array(period).fill(0);
-      const daysWithData = Math.min(period, Math.max(1, Math.ceil(domData.totalValue / 10)));
-      const valuePerDay = Math.floor(domData.totalValue / daysWithData);
+    if (extractedArray.length === 0) {
+      console.log(`  ⚠️  Fallback activado (Vision empty, total: ${domData.totalValue})`);
       
-      for (let i = 0; i < daysWithData; i++) {
-        extractedArray[period - daysWithData + i] = valuePerDay;
+      // Si tenemos un total válido, distribuirlo
+      if (domData.totalValue > 0) {
+        extractedArray = new Array(period).fill(0);
+        const daysWithData = Math.min(period, Math.max(1, Math.ceil(domData.totalValue / 10)));
+        const valuePerDay = Math.floor(domData.totalValue / daysWithData);
+        
+        for (let i = 0; i < daysWithData; i++) {
+          extractedArray[period - daysWithData + i] = valuePerDay;
+        }
+        // Ajustar el último día para que la suma sea exacta
+        const currentSum = extractedArray.reduce((a, b) => a + b, 0);
+        if (currentSum < domData.totalValue) {
+          extractedArray[period - 1] += (domData.totalValue - currentSum);
+        }
+        console.log(`  ✅ Fallback: distribuidos ${domData.totalValue} en ${daysWithData} días`);
+      } else {
+        // Si incluso el total es 0, devolver array de ceros
+        extractedArray = new Array(period).fill(0);
+        console.log(`  📭 Sin datos: array de ceros`);
       }
-      // Ajustar el último día para que la suma sea exacta
-      const currentSum = extractedArray.reduce((a, b) => a + b, 0);
-      if (currentSum < domData.totalValue) {
-        extractedArray[period - 1] += (domData.totalValue - currentSum);
-      }
-      console.log(`  Fallback: ${daysWithData} días activos`);
     }
 
     // Construir histórico con fechas
