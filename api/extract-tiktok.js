@@ -190,10 +190,12 @@ RESPONDE SOLO CON ARRAY JSON, NADA MÁS:
       });
 
       const content = response.choices[0].message.content.trim();
+      console.log(`  📝 Vision response (${metricConfig.name}): "${content.substring(0, 100)}"`);
+      
       const arrayMatch = content.match(/\[\s*[\d\s,]*\]/);
       
       if (!arrayMatch) {
-        console.log(`  ⚠️  Vision no devolvió array válido`);
+        console.log(`  ⚠️  No array found in: "${content}"`);
         throw new Error('No array found');
       }
       
@@ -235,7 +237,8 @@ RESPONDE SOLO CON ARRAY JSON, NADA MÁS:
       console.log(`  ✅ ${metricConfig.name}: ${historyArray.length} días | Total: ${sum}`);
       
     } catch (visionError) {
-      console.error(`  ❌ Error en Vision:`, visionError.message);
+      console.error(`  ❌ Error en Vision (${metricConfig.name}):`, visionError.message);
+      console.error(`     Stack: ${visionError.stack?.split('\n')[1]}`);
       metricsData[metricConfig.name] = {
         totalValue: '0',
         historicalData: [],
