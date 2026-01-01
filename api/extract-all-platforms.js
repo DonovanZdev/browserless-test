@@ -40,7 +40,7 @@ async function extractTikTokData(tiktokCookies, period = 28) {
   await page.setCookie(...cookieArray);
 
   // Construir URL con período dinámico
-  const url = `https://www.tiktok.com/tiktokstudio?dateRange=%7B%22type%22%3A%22fixed%22%2C%22pastDay%22%3A${period}%7D&activeAnalyticsMetric=video_views`;
+  const url = `https://www.tiktok.com/tiktokstudio?dateRange=%7B%22type%22%3A%22fixed%22%2C%22pastDay%22%3A${period}%7D&activeAnalyticsMetric=shares`;
   
   await page.goto(url, {
     waitUntil: 'networkidle2',

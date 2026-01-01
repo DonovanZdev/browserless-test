@@ -186,7 +186,7 @@ async function extractTikTokData(tiktokCookies, period = 7) {
   await page.setCookie(...cookieArray);
 
   // Construir URL con período dinámico
-  const url = `https://www.tiktok.com/tiktokstudio?dateRange=%7B%22type%22%3A%22fixed%22%2C%22pastDay%22%3A${period}%7D&activeAnalyticsMetric=video_views`;
+  const url = `https://www.tiktok.com/tiktokstudio?dateRange=%7B%22type%22%3A%22fixed%22%2C%22pastDay%22%3A${period}%7D&activeAnalyticsMetric=shares`;
   
   await page.goto(url, {
     waitUntil: 'networkidle2',
@@ -271,7 +271,7 @@ module.exports = async function handler(req, res) {
     const urls = {
       facebook: buildFacebookUrl(facebook_period || 'LAST_28D'),
       instagram: buildFacebookUrl(facebook_period || 'LAST_28D'),
-      tiktok: "https://www.tiktok.com/tiktokstudio?dateRange=%7B%22type%22%3A%22fixed%22%2C%22pastDay%22%3A7%7D&activeAnalyticsMetric=video_views"
+      tiktok: "https://www.tiktok.com/tiktokstudio?dateRange=%7B%22type%22%3A%22fixed%22%2C%22pastDay%22%3A7%7D&activeAnalyticsMetric=shares"
     };
     
     // Determinar qué plataformas extraer
