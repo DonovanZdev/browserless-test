@@ -485,6 +485,7 @@ module.exports = async (req, res) => {
     const periodMap = {
       'LAST_7D': 7,
       'LAST_28D': 28,
+      'LAST_60D': 60,
       'LAST_90D': 90,
       'THIS_MONTH': 28,
       'LAST_MONTH': 28
@@ -504,6 +505,7 @@ module.exports = async (req, res) => {
       data: {
         timestamp: new Date().toISOString(),
         period: period,
+        daysRequested: tiktokPeriod,
         platform: 'TikTok',
         metrics: tiktokData
       }
