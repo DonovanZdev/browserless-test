@@ -9,6 +9,9 @@ tiktok-cookies.json
 .env
 .env.local
 
+# Reports - Archivos generados
+reports/
+
 # Build
 dist/
 build/

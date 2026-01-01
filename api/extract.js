@@ -1,5 +1,7 @@
 const puppeteer = require("puppeteer-core");
 const { OpenAI } = require("openai");
+const fs = require("fs");
+const path = require("path");
 
 const TOKEN = "2ThMQelUWHfBWdM8f1e02d135a315e02e44d27e13e5020198";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -244,7 +246,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const { cookies, platform, meta_cookies, tiktok_cookies, tiktok_period, facebook_period } = req.body;
+    const { cookies, platform, meta_cookies, tiktok_cookies, tiktok_period, facebook_period, include_exports } = req.body;
     
     // Soporte para cookies: meta_cookies para Facebook/Instagram, tiktok_cookies para TikTok
     const cookieMap = {
