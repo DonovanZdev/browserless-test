@@ -106,55 +106,46 @@ async function extractTikTokMetric(page, metricConfig, period, metricsData, metr
     
     // Extraer el número total de la tarjeta de métrica
     const metricData = await page.evaluate((label, index) => {
-      // Estrategia 1: Buscar por label exacto (nombre de la métrica)
-      const allDivs = Array.from(document.querySelectorAll('div, span'));
+      // Buscar todos los elementos de la página
+      const allElements = document.querySelectorAll('*');
       
       let totalValue = null;
-      let nextNumbers = [];
+      let found = false;
       
-      // Buscar el elemento que contiene el label
-      for (let el of allDivs) {
-        if (el.textContent.trim() === label || el.textContent.trim().includes(label)) {
-          // Subir en el árbol para encontrar la tarjeta padre
-          let parent = el;
-          for (let i = 0; i < 5; i++) {
-            if (parent.parentElement) {
-              parent = parent.parentElement;
-              // Buscar números grandes en esta tarjeta
-              const numbers = Array.from(parent.querySelectorAll('*'))
-                .map(e => ({
-                  num: parseInt(e.textContent?.match(/^\d+$/)?.[0] || 0),
-                  text: e.textContent?.trim()
-                }))
-                .filter(x => x.num > 0 && x.text.match(/^\d+$/));
-              
-              if (numbers.length > 0) {
-                // El primer número grande suele ser el total
-                totalValue = numbers[0].num;
-                break;
-              }
+      // Estrategia: buscar el label y luego el número que le sigue
+      for (let el of allElements) {
+        const text = el.textContent?.trim();
+        
+        // Verificar si este elemento contiene el label exacto o similar
+        if (text && (text === label || text.includes(label))) {
+          // Buscar en padres hasta encontrar un contenedor con un número grande
+          let parent = el.parentElement;
+          
+          for (let i = 0; i < 6 && parent; i++) {
+            // Buscar números en este nivel
+            const numberElements = Array.from(parent.querySelectorAll('*'))
+              .filter(e => {
+                const num = parseInt(e.textContent?.trim() || '');
+                return !isNaN(num) && num > 0 && e.textContent?.trim().match(/^\d+$/);
+              });
+            
+            if (numberElements.length > 0) {
+              // Tomar el número más grande o el primero
+              totalValue = Math.max(...numberElements.map(e => parseInt(e.textContent)));
+              found = true;
+              break;
             }
+            
+            parent = parent.parentElement;
           }
-          if (totalValue) break;
-        }
-      }
-      
-      // Estrategia 2: Si no encontró por label, usar el índice
-      if (!totalValue) {
-        const cards = document.querySelectorAll('[data-testid], [class*="metric"], div[role="button"]');
-        if (cards[index]) {
-          const numbers = Array.from(cards[index].querySelectorAll('*'))
-            .map(e => parseInt(e.textContent?.match(/^\d+$/)?.[0] || 0))
-            .filter(n => n > 0);
-          if (numbers.length > 0) {
-            totalValue = Math.max(...numbers);
-          }
+          
+          if (found) break;
         }
       }
       
       return {
-        totalValue,
-        found: totalValue !== null
+        totalValue: totalValue || 0,
+        found: found
       };
     }, metricConfig.label, metricIndex);
 
