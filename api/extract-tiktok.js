@@ -15,15 +15,24 @@ async function sleep(ms) {
  * 1. Array de objetos: [{name: "x", value: "y"}, ...]
  * 2. Objeto plano con propiedades: {"cookieName": "value", ...}
  * 3. Array con objeto plano: [{"cookieName": "value", ...}]
+ * 4. String JSON (escapado o no)
  */
 function parseCookies(cookies, domain = '.tiktok.com') {
   if (!cookies) return [];
   
   if (typeof cookies === 'string') {
     try {
-      cookies = JSON.parse(cookies);
+      // Si está doble-escapado, remover comillas externas
+      let cookieString = cookies.trim();
+      if ((cookieString.startsWith('"') && cookieString.endsWith('"')) ||
+          (cookieString.startsWith("'") && cookieString.endsWith("'"))) {
+        cookieString = cookieString.slice(1, -1);
+      }
+      
+      cookies = JSON.parse(cookieString);
     } catch (e) {
-      console.error('Error parseando cookies:', e.message);
+      console.error('Error parseando cookies string:', e.message);
+      console.error('Recibido:', cookies.slice(0, 200));
       return [];
     }
   }
