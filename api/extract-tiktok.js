@@ -170,11 +170,20 @@ El gráfico muestra hasta ${period} días de datos. Responde SOLO con un array J
     if (historicalData.dailyValues.length > 0) {
       const historyArray = [];
       const today = new Date();
+      today.setHours(0, 0, 0, 0); // Normalizar a inicio del día
       
-      for (let i = 0; i < historicalData.dailyValues.length && i < period; i++) {
-        const daysAgo = period - historicalData.dailyValues.length + i;
+      // Tomar solo los últimos 'period' valores (en caso Vision devuelva más)
+      const valuesToUse = historicalData.dailyValues.slice(-period);
+      
+      for (let i = 0; i < valuesToUse.length; i++) {
+        const daysAgo = valuesToUse.length - 1 - i;
         const date = new Date(today);
         date.setDate(date.getDate() - daysAgo);
+        
+        // Saltar cualquier fecha futura
+        if (date > today) {
+          continue;
+        }
         
         const dayNum = date.getDate();
         const monthNum = date.getMonth();
@@ -183,7 +192,7 @@ El gráfico muestra hasta ${period} días de datos. Responde SOLO con un array J
         
         historyArray.push({
           fecha: fechaStr,
-          valor: historicalData.dailyValues[i].toString(),
+          valor: valuesToUse[i].toString(),
           timestamp: Math.floor(date.getTime() / 1000),
           date: date.toISOString().split('T')[0]
         });
