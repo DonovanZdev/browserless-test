@@ -32,27 +32,38 @@ function parseCookies(cookies, domain = '.facebook.com') {
   
   // Si es array, procesarlo
   if (Array.isArray(cookies)) {
-    cookieArray = cookies.map(cookie => ({
-      name: cookie.name,
-      value: cookie.value,
-      domain: cookie.domain || domain,
-      path: cookie.path || '/',
-      ...(cookie.secure !== undefined && { secure: cookie.secure }),
-      ...(cookie.httpOnly !== undefined && { httpOnly: cookie.httpOnly }),
-      ...(cookie.expires !== undefined && { expires: cookie.expires }),
-      ...(cookie.sameSite && { sameSite: cookie.sameSite })
-    }));
+    cookieArray = cookies
+      .filter(cookie => cookie && cookie.name && cookie.value) // Validar que tenga name y value
+      .map(cookie => {
+        const processed = {
+          name: String(cookie.name),
+          value: String(cookie.value),
+          domain: cookie.domain || domain,
+          path: cookie.path || '/'
+        };
+        
+        // Agregar campos opcionales si existen
+        if (cookie.secure !== undefined) processed.secure = Boolean(cookie.secure);
+        if (cookie.httpOnly !== undefined) processed.httpOnly = Boolean(cookie.httpOnly);
+        if (cookie.expires !== undefined) processed.expires = Number(cookie.expires);
+        if (cookie.sameSite) processed.sameSite = String(cookie.sameSite);
+        
+        return processed;
+      });
   } 
   // Si es objeto, convertir a array de cookies
   else if (typeof cookies === 'object') {
-    cookieArray = Object.entries(cookies).map(([name, value]) => ({
-      name,
-      value: String(value),
-      domain,
-      path: '/'
-    }));
+    cookieArray = Object.entries(cookies)
+      .filter(([name, value]) => name && value) // Validar que name y value existan
+      .map(([name, value]) => ({
+        name: String(name),
+        value: String(value),
+        domain,
+        path: '/'
+      }));
   }
   
+  console.log(`✅ Parseados ${cookieArray.length} cookies válidos para ${domain}`);
   return cookieArray;
 }
 
