@@ -335,7 +335,7 @@ async function extractTikTokData(tiktokCookies, period = 28) {
 /**
  * Extrae métricas de una plataforma (Facebook/Instagram)
  */
-async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook', businessId = '176166689688823', assetId = '8555156748') {
+async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook', businessId = null, assetId = null) {
   const browser = await puppeteer.connect({
     browserWSEndpoint: `wss://production-sfo.browserless.io?token=${TOKEN}`,
   });
@@ -348,9 +348,20 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
   await page.setCookie(...cookieArray);
 
   const timeRange = `%2522${period}%2522`;
-  const url = `https://business.facebook.com/latest/insights/results?business_id=${businessId}&asset_id=${assetId}&time_range=${timeRange}&platform=${platform}&audience_tab=demographics`;
+  
+  // Si no hay businessId, usar solo assetId en la URL
+  let url;
+  if (businessId && assetId) {
+    url = `https://business.facebook.com/latest/insights/results?business_id=${businessId}&asset_id=${assetId}&time_range=${timeRange}&platform=${platform}&audience_tab=demographics`;
+  } else if (assetId) {
+    // Si solo tiene assetId, navegar directamente a esa URL
+    url = `https://business.facebook.com/latest/insights/results?asset_id=${assetId}`;
+  } else {
+    throw new Error('Se requiere al menos un assetId');
+  }
 
   console.log(`📊 Extrayendo datos de ${platform} (Período: ${period})...`);
+  console.log(`   URL: ${url}`);
 
   await page.goto(url, { waitUntil: "networkidle2" });
   await sleep(2000);
@@ -545,7 +556,7 @@ function normalizeCookies(input) {
 module.exports = async (req, res) => {
   try {
     const rawBody = req.body;
-    let { cookies, tiktokCookies, period = 'LAST_28D', businessId = '176166689688823', assetId = '8555156748', includeTikTok = false } = rawBody;
+    let { cookies, tiktokCookies, period = 'LAST_28D', businessId = null, assetId = null, includeTikTok = false } = rawBody;
     
     // Normalizar cookies de Facebook
     cookies = normalizeCookies(cookies);
