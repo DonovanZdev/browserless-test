@@ -125,11 +125,15 @@ async function extractTikTokMetric(page, metricConfig, period, metricsData, metr
       timeout: 30000
     });
     
-    await sleep(1000); // Esperar a que se renderice el gráfico
+    await sleep(2000); // Esperar más tiempo a que se renderice el gráfico
 
     // PASO 2: Extraer el total desde el DOM
     const domData = await page.evaluate((label) => {
-      const result = { totalValue: 0 };
+      const result = { totalValue: 0, allNumbers: [], foundLabel: false };
+      
+      // Primero, buscar si encontramos el label
+      const hasLabel = document.body.innerText.includes(label);
+      result.foundLabel = hasLabel;
       
       // Buscar todos los números en la página
       const numberTexts = [];
@@ -137,19 +141,20 @@ async function extractTikTokMetric(page, metricConfig, period, metricsData, metr
         const text = el.innerText?.trim();
         if (text && /^\d+$/.test(text)) {
           const num = parseInt(text);
-          if (num > 0) numberTexts.push(num);
+          if (num > 0 && num < 999999) numberTexts.push(num);
         }
       });
       
       // El más grande es probablemente el total
       if (numberTexts.length > 0) {
         result.totalValue = Math.max(...numberTexts);
+        result.allNumbers = numberTexts.slice(0, 10); // Top 10 para debug
       }
       
       return result;
     }, metricConfig.label);
 
-    console.log(`  📊 Total desde DOM: ${domData.totalValue}`);
+    console.log(`  📊 Total desde DOM: ${domData.totalValue} | Found label: ${domData.foundLabel} | Numbers: ${domData.allNumbers.join(',')}`);
 
     // PASO 3: Construir datos históricos simple (fallback sin Vision)
     // Si no podemos extraer con Vision, al menos devolvemos el total
