@@ -63,32 +63,44 @@ function parseCookies(cookies, domain = '.tiktok.com') {
 /**
  * Extrae una métrica individual de TikTok
  */
-async function extractTikTokMetric(page, metricConfig, period, metricsData) {
+async function extractTikTokMetric(page, metricConfig, period, metricsData, metricIndex) {
   try {
-    console.log(`\n📍 Extrayendo: ${metricConfig.name} (${metricConfig.label})`);
+    console.log(`\n📍 Extrayendo: ${metricConfig.name} (${metricConfig.label}) [índice: ${metricIndex}]`);
     
-    // Verificar qué elemento vamos a clickear
-    const elementsBefore = await page.evaluate((label) => {
-      const buttons = Array.from(document.querySelectorAll('button, [role="button"], div')).filter(el => {
-        return el.textContent.includes(label);
-      });
-      return buttons.length;
-    }, metricConfig.label);
-    
-    console.log(`  Encontrados ${elementsBefore} elementos con label "${metricConfig.label}"`);
-    
-    // Hacer click en la métrica para cambiar el gráfico
-    await page.evaluate((label) => {
-      const buttons = Array.from(document.querySelectorAll('button, [role="button"], div')).filter(el => {
-        return el.textContent.includes(label);
-      });
+    // Intentar hacer click por índice en lugar de por label
+    const clickSuccess = await page.evaluate((index) => {
+      // Buscar todas las tarjetas de métricas (usualmente están en contenedores específicos)
+      const metricCards = document.querySelectorAll('[role="button"] > div, [data-testid*="metric"], .metrics-card, [class*="metric"]');
       
-      if (buttons.length > 0) {
-        buttons[0].click();
+      if (metricCards.length > index) {
+        metricCards[index].click();
+        return true;
       }
-    }, metricConfig.label);
+      
+      // Fallback: buscar por label
+      return false;
+    }, metricIndex);
 
-    await sleep(1000);
+    if (!clickSuccess) {
+      // Fallback: buscar por label de texto
+      const labelFound = await page.evaluate((label) => {
+        const buttons = Array.from(document.querySelectorAll('button, [role="button"], div')).filter(el => {
+          return el.textContent.includes(label);
+        });
+        
+        if (buttons.length > 0) {
+          buttons[0].click();
+          return true;
+        }
+        return false;
+      }, metricConfig.label);
+      
+      console.log(`  Label found: ${labelFound}, elemento clickeado por texto`);
+    } else {
+      console.log(`  ✅ Métrica seleccionada por índice`);
+    }
+
+    await sleep(1500);
 
     // Extraer todos los puntos del gráfico
     let historicalData = await page.evaluate(() => {
@@ -265,11 +277,12 @@ async function extractTikTokDataHistorical(tiktokCookies, period = 28) {
   await page.setViewport({ width: 1920, height: 1080 });
   
   const cookieArray = parseCookies(tiktokCookies, '.tiktok.com');
+  console.log(`🔐 Configurando ${cookieArray.length} cookies para .tiktok.com`);
   await page.setCookie(...cookieArray);
 
   const url = `https://www.tiktok.com/tiktokstudio?dateRange=%7B%22type%22%3A%22fixed%22%2C%22pastDay%22%3A${period}%7D&activeAnalyticsMetric=shares`;
   
-  console.log(`📊 Extrayendo datos de TikTok (Período: últimos ${period} días)...`);
+  console.log(`📊 Navegando a TikTok Studio (Período: últimos ${period} días)...`);
   
   await page.goto(url, {
     waitUntil: 'networkidle2',
@@ -277,6 +290,20 @@ async function extractTikTokDataHistorical(tiktokCookies, period = 28) {
   });
 
   await sleep(3000);
+
+  // Verificar si la sesión es válida chequeando si se cargó contenido
+  const sessionValid = await page.evaluate(() => {
+    // Buscar elementos que indiquen que hay datos cargados
+    const hasContent = document.querySelector('[role="main"]') !== null;
+    const hasMetrics = document.querySelectorAll('div').length > 50;
+    return hasContent && hasMetrics;
+  });
+
+  console.log(`🔍 Validación de sesión: ${sessionValid ? '✅ VÁLIDA' : '❌ INVÁLIDA - Posibles cookies expiradas'}`);
+
+  if (!sessionValid) {
+    console.error('⚠️  TikTok Studio no cargó contenido. Las cookies pueden estar expiradas.');
+  }
 
   const metricsData = {};
   
@@ -295,7 +322,7 @@ async function extractTikTokDataHistorical(tiktokCookies, period = 28) {
   for (let i = 0; i < metrics.length; i += batchSize) {
     const batch = metrics.slice(i, i + batchSize);
     
-    await Promise.all(batch.map(metricConfig => extractTikTokMetric(page, metricConfig, period, metricsData)));
+    await Promise.all(batch.map((metricConfig, batchIdx) => extractTikTokMetric(page, metricConfig, period, metricsData, i + batchIdx)));
   }
 
   await browser.close();
@@ -362,10 +389,11 @@ module.exports = async (req, res) => {
 
     return res.status(200).json(results);
   } catch (error) {
-    console.error('❌ Error:', error.message);
+    console.error('❌ Error extrayendo TikTok:', error.message);
     return res.status(500).json({ 
       error: error.message,
-      success: false
+      success: false,
+      hint: 'Las cookies podrían estar expiradas. Por favor, genera nuevas cookies desde TikTok Studio.'
     });
   }
 };
