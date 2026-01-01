@@ -405,14 +405,14 @@ async function extractTikTokDataHistorical(tiktokCookies, period = 28) {
 
   console.log('\n📈 Extrayendo valores históricos de cada métrica...\n');
 
-  // Procesar métricas en paralelo (máximo 2 simultáneamente)
-  const batchSize = 2;
-  for (let i = 0; i < metrics.length; i += batchSize) {
-    const batch = metrics.slice(i, i + batchSize);
-    
-    await Promise.all(batch.map((metricConfig, batchIdx) => 
-      extractTikTokMetric(page, metricConfig, period, metricsData, i + batchIdx, totals[metricConfig.name] || 0)
-    ));
+  // Procesar cada métrica con su propia página
+  for (let i = 0; i < metrics.length; i++) {
+    const metricConfig = metrics[i];
+    try {
+      await extractTikTokMetric(page, metricConfig, period, metricsData, i, totals[metricConfig.name] || 0);
+    } catch (err) {
+      console.error(`Error processing ${metricConfig.name}:`, err.message);
+    }
   }
 
   await browser.close();
