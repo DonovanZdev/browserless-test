@@ -46,15 +46,7 @@ if (data.platforms.instagram) {
 }
 
 if (data.platforms.tiktok) {
-  const tiktok = data.platforms.tiktok;
-  result.summary.TikTok = {
-    'Visualizaciones de vídeos': formatNumber(tiktok.visualizaciones_videos),
-    'Visualizaciones de perfil': formatNumber(tiktok.visualizaciones_perfil),
-    'Me gusta': formatNumber(tiktok.me_gusta),
-    'Comentarios': formatNumber(tiktok.comentarios),
-    'Veces compartido': formatNumber(tiktok.veces_compartido),
-    'Recompensas estimadas': tiktok.recompensas_estimadas
-  };
+  result.summary.TikTok = formatPlatformData(data.platforms.tiktok);
 }
 
 return result;

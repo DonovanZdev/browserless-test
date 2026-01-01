@@ -68,9 +68,9 @@ function parseCookies(cookies, domain = '.facebook.com') {
 }
 
 /**
- * Extrae métricas de TikTok usando Vision de OpenAI
+ * Extrae métricas históricas de TikTok (desglosadas por día) como Facebook/Instagram
  */
-async function extractTikTokData(tiktokCookies, period = 28) {
+async function extractTikTokDataHistorical(tiktokCookies, period = 28) {
   if (!tiktokCookies) {
     throw new Error("TikTok cookies requeridas");
   }
@@ -82,12 +82,12 @@ async function extractTikTokData(tiktokCookies, period = 28) {
   const page = await browser.newPage();
   await page.setViewport({ width: 1920, height: 1080 });
   
-  // Parsear cookies (maneja strings JSON, objetos y arrays)
   const cookieArray = parseCookies(tiktokCookies, '.tiktok.com');
   await page.setCookie(...cookieArray);
 
-  // Construir URL con período dinámico
   const url = `https://www.tiktok.com/tiktokstudio?dateRange=%7B%22type%22%3A%22fixed%22%2C%22pastDay%22%3A${period}%7D&activeAnalyticsMetric=shares`;
+  
+  console.log(`📊 Extrayendo datos de TikTok (Período: últimos ${period} días)...`);
   
   await page.goto(url, {
     waitUntil: 'networkidle2',
@@ -95,50 +95,162 @@ async function extractTikTokData(tiktokCookies, period = 28) {
   });
 
   await sleep(3000);
+
+  const metricsData = {};
   
-  // Tomar screenshot en base64
-  const screenshot = await page.screenshot({ encoding: 'base64' });
-  
+  const metrics = [
+    'visualizaciones_videos',
+    'visualizaciones_perfil',
+    'me_gusta',
+    'comentarios',
+    'veces_compartido'
+  ];
+
+  console.log('📈 Extrayendo valores históricos de cada métrica...\n');
+
+  for (const metricName of metrics) {
+    try {
+      // Hacer click en la métrica para cambiar el gráfico (buscar por data-testid o label)
+      await page.evaluate((metric) => {
+        // Buscar botón o elemento de la métrica
+        const elements = Array.from(document.querySelectorAll('button, [role="button"], [class*="metric"], div')).filter(el => {
+          const text = el.textContent.toLowerCase();
+          return text.includes(metric.replace(/_/g, ' '));
+        });
+        
+        if (elements.length > 0) {
+          elements[0].click();
+        }
+      }, metricName);
+
+      await sleep(1500);
+
+      // Extraer datos del gráfico
+      const historicalData = await page.evaluate(() => {
+        const result = {
+          dailyValues: [],
+          dates: []
+        };
+
+        // Buscar puntos del gráfico (circles, path elements)
+        const chartPoints = document.querySelectorAll('[class*="chart"] circle, [class*="graph"] circle, svg circle');
+        
+        if (chartPoints.length > 0) {
+          // Extraer valores de los puntos
+          chartPoints.forEach(point => {
+            const cy = parseFloat(point.getAttribute('cy'));
+            const dataValue = point.getAttribute('data-value') || point.getAttribute('aria-label');
+            
+            if (dataValue) {
+              const numMatch = dataValue.match(/\d+/);
+              if (numMatch) {
+                result.dailyValues.push(parseInt(numMatch[0]));
+              }
+            }
+          });
+        }
+
+        // Si no hay puntos, intentar extraer del texto visible del gráfico
+        if (result.dailyValues.length === 0) {
+          const tooltips = document.querySelectorAll('[class*="tooltip"], [role="tooltip"], [data-tooltip]');
+          tooltips.forEach(tooltip => {
+            const numMatch = tooltip.textContent.match(/\d+/);
+            if (numMatch) {
+              result.dailyValues.push(parseInt(numMatch[0]));
+            }
+          });
+        }
+
+        // Extraer fechas del eje X
+        const xAxisLabels = document.querySelectorAll('[class*="x-axis"] text, [class*="xaxis"] text, svg text');
+        xAxisLabels.forEach(label => {
+          const dateText = label.textContent.trim();
+          if (dateText.match(/\d+\s+de\s+\w+|^\d{1,2}$/)) {
+            result.dates.push(dateText);
+          }
+        });
+
+        return result;
+      });
+
+      // Si tenemos datos, armarlos en formato histórico
+      if (historicalData.dailyValues.length > 0) {
+        const historyArray = [];
+        const today = new Date();
+        
+        for (let i = 0; i < historicalData.dailyValues.length && i < period; i++) {
+          const daysAgo = period - historicalData.dailyValues.length + i;
+          const date = new Date(today);
+          date.setDate(date.getDate() - daysAgo);
+          
+          const dayNum = date.getDate();
+          const monthNum = date.getMonth();
+          const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+          const fechaStr = `${dayNum} de ${months[monthNum]}`;
+          
+          historyArray.push({
+            fecha: fechaStr,
+            valor: historicalData.dailyValues[i].toString(),
+            timestamp: Math.floor(date.getTime() / 1000),
+            date: date.toISOString().split('T')[0]
+          });
+        }
+
+        // Calcular total (suma de todos los días)
+        const totalValue = historyArray.reduce((sum, item) => {
+          return sum + (parseInt(item.valor) || 0);
+        }, 0).toString();
+
+        metricsData[metricName] = {
+          totalValue: totalValue,
+          historicalData: historyArray,
+          totalPoints: historyArray.length
+        };
+
+        console.log(`  ✅ ${metricName}: ${historyArray.length} puntos | Total: ${totalValue}`);
+      } else {
+        // Fallback: extraer solo el valor total del DOM
+        const totalValue = await page.evaluate((metric) => {
+          const containers = Array.from(document.querySelectorAll('div, span, p')).filter(el => {
+            const text = el.textContent.toLowerCase();
+            return text.includes(metric.replace(/_/g, ' ')) && text.match(/\d+/);
+          });
+          
+          if (containers.length > 0) {
+            const match = containers[0].textContent.match(/\d+/);
+            return match ? match[0] : '0';
+          }
+          return '0';
+        }, metricName);
+
+        metricsData[metricName] = {
+          totalValue: totalValue,
+          historicalData: [],
+          totalPoints: 0
+        };
+
+        console.log(`  ⚠️  ${metricName}: 0 puntos | Total: ${totalValue}`);
+      }
+    } catch (e) {
+      console.error(`  ❌ Error extrayendo ${metricName}:`, e.message);
+      metricsData[metricName] = {
+        totalValue: '0',
+        historicalData: [],
+        totalPoints: 0
+      };
+    }
+  }
+
   await browser.close();
   
-  // Usar OpenAI Vision para extraer datos
-  const prompt = `En esta screenshot de TikTok Studio para el período de los últimos ${period} días, extrae EXACTAMENTE estos KPIs de la sección de 'Métricas clave': 1) Visualizaciones de videos, 2) Visualizaciones de perfil, 3) Me gusta, 4) Comentarios, 5) Veces compartido, 6) Recompensas estimadas. TAMBIÉN extrae el PERIODO exacto que aparece en la esquina superior derecha. Responde SOLO en JSON: {"visualizaciones_videos": "XXX", "visualizaciones_perfil": "XXX", "me_gusta": "XXX", "comentarios": "XXX", "veces_compartido": "XXX", "recompensas_estimadas": "$XXX", "periodo": "Los últimos X días"}`;
-  
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o",
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "image_url",
-            image_url: {
-              url: `data:image/png;base64,${screenshot}`,
-            },
-          },
-          {
-            type: "text",
-            text: prompt,
-          },
-        ],
-      },
-    ],
-    max_tokens: 200,
-  });
+  return metricsData;
+}
 
-  // Parsear respuesta de OpenAI
-  let data = {};
-  try {
-    const content = response.choices[0].message.content;
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      data = JSON.parse(jsonMatch[0]);
-    }
-  } catch (e) {
-    console.error("Error parsing OpenAI response:", e);
-  }
-  
-  return data;
+/**
+ * Extrae métricas de TikTok usando Vision de OpenAI (DEPRECATED - usar extractTikTokDataHistorical)
+ */
+async function extractTikTokData(tiktokCookies, period = 28) {
+  return extractTikTokDataHistorical(tiktokCookies, period);
 }
 
 /**
@@ -405,7 +517,16 @@ module.exports = async (req, res) => {
       try {
         console.log('⏳ TikTok...');
         const tiktokPeriod = 28; // 28 días por defecto
-        results.platforms.tiktok = await extractTikTokData(tiktokCookies, tiktokPeriod);
+        const tiktokRawData = await extractTikTokData(tiktokCookies, tiktokPeriod);
+        
+        // Transformar formato de TikTok para coincidir con Facebook/Instagram
+        results.platforms.tiktok = {
+          platform: 'TikTok',
+          period: 'LAST_28D',
+          extractedAt: new Date().toISOString(),
+          metrics: tiktokRawData
+        };
+        
         console.log('✅ TikTok completado\n');
       } catch (error) {
         console.error('❌ Error en TikTok:', error.message);
