@@ -279,13 +279,22 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
       });
     }
     
+    // Calcular totalValue sumando values históricos (excepto Seguidores que es snapshot)
+    let calculatedTotal = metricValues.totalValue;
+    if (metricConfig.name !== 'Seguidores' && historicalData.length > 0) {
+      const sum = historicalData.reduce((acc, item) => {
+        return acc + (parseInt(item.valor) || 0);
+      }, 0);
+      calculatedTotal = sum.toString();
+    }
+    
     metricsData[metricConfig.name] = {
-      totalValue: metricValues.totalValue,
+      totalValue: calculatedTotal,
       historicalData: historicalData,
       totalPoints: historicalData.length
     };
     
-    console.log(`  ✅ ${metricConfig.name}: ${historicalData.length} puntos`);
+    console.log(`  ✅ ${metricConfig.name}: ${historicalData.length} puntos | Total: ${calculatedTotal}`);
   }
 
   await browser.close();
