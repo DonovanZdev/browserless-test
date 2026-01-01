@@ -97,39 +97,39 @@ function parseCookies(cookies, domain = '.tiktok.com') {
  */
 async function extractTikTokMetric(page, metricConfig, period, metricsData, metricIndex) {
   try {
-    console.log(`\n📍 Extrayendo: ${metricConfig.name} (${metricConfig.label}) [índice: ${metricIndex}]`);
+    console.log(`\n📍 Extrayendo: ${metricConfig.name} (índice: ${metricIndex})`);
     
-    // Intentar hacer click por índice en lugar de por label
-    const clickSuccess = await page.evaluate((index) => {
-      // Buscar todas las tarjetas de métricas (usualmente están en contenedores específicos)
-      const metricCards = document.querySelectorAll('[role="button"] > div, [data-testid*="metric"], .metrics-card, [class*="metric"]');
+    // Click en la tarjeta de métrica usando índice
+    const clickResult = await page.evaluate((index) => {
+      // Encontrar todas las tarjetas de métricas (divs con números grandes)
+      const metricCards = document.querySelectorAll('[role="tablist"] [role="tab"], .metric-card, [data-testid*="metric"], div[class*="metric"]');
+      
+      console.log(`Tarjetas encontradas: ${metricCards.length}`);
       
       if (metricCards.length > index) {
+        console.log(`Click en tarjeta ${index}`);
         metricCards[index].click();
-        return true;
+        return { success: true, method: 'by-index' };
       }
       
-      // Fallback: buscar por label
-      return false;
+      // Fallback: buscar elementos que contengan números grandes
+      const elements = Array.from(document.querySelectorAll('div')).filter(el => {
+        const text = el.textContent?.trim();
+        return text && /^[\d,]+$/.test(text) && text.length < 10 && !el.querySelector('div');
+      });
+      
+      if (elements.length > index && elements[index]) {
+        elements[index].click();
+        return { success: true, method: 'by-number-element' };
+      }
+      
+      return { success: false, cardsFound: metricCards.length, numbersFound: elements.length };
     }, metricIndex);
 
-    if (!clickSuccess) {
-      // Fallback: buscar por label de texto
-      const labelFound = await page.evaluate((label) => {
-        const buttons = Array.from(document.querySelectorAll('button, [role="button"], div')).filter(el => {
-          return el.textContent.includes(label);
-        });
-        
-        if (buttons.length > 0) {
-          buttons[0].click();
-          return true;
-        }
-        return false;
-      }, metricConfig.label);
-      
-      console.log(`  Label found: ${labelFound}, elemento clickeado por texto`);
+    if (!clickResult.success) {
+      console.log(`  ⚠️  Click falló: ${JSON.stringify(clickResult)}`);
     } else {
-      console.log(`  ✅ Métrica seleccionada por índice`);
+      console.log(`  ✅ Click exitoso (${clickResult.method})`);
     }
 
     await sleep(1500);
