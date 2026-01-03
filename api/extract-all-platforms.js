@@ -556,7 +556,7 @@ function normalizeCookies(input) {
 module.exports = async (req, res) => {
   try {
     const rawBody = req.body;
-    let { cookies, tiktokCookies, period = 'LAST_28D', businessId = null, assetId = null, includeTikTok = false } = rawBody;
+    let { cookies, tiktokCookies, period = 'LAST_28D', businessId = '919907498755577', assetId = '1299529110060474', includeTikTok = false } = rawBody;
     
     // Normalizar cookies de Facebook
     cookies = normalizeCookies(cookies);
