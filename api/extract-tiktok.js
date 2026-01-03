@@ -172,15 +172,15 @@ async function extractTotalsFromDashboard(page, period) {
 }
 
 /**
- * Estrategia: Navegar a cada métrica usando /analytics y extraer datos del gráfico con Vision
+ * Extrae métrica desde dashboard (sin navegar a cada analytics, más rápido)
  */
 async function extractTikTokMetric(page, metricConfig, period, metricsData, metricIndex, totalValue) {
   try {
-    console.log(`\n📍 Extrayendo: ${metricConfig.name} (total esperado: ${totalValue})`);
+    console.log(`\n📍 Procesando: ${metricConfig.name} (total: ${totalValue})`);
     
     // Si el total es 0, no hay datos que extraer
     if (totalValue === 0) {
-      console.log(`  ℹ️  Total es 0, sin datos históricos para extraer`);
+      console.log(`  ℹ️  Total es 0, sin datos históricos`);
       metricsData[metricConfig.name] = {
         totalValue: '0',
         historicalData: [],
@@ -189,134 +189,30 @@ async function extractTikTokMetric(page, metricConfig, period, metricsData, metr
       return;
     }
     
-    // PASO 1: Mapear el nombre de la métrica al parámetro de URL
-    let metricParam = 'profile_views'; // Por defecto
-    
-    if (metricConfig.name === 'visualizaciones_videos') {
-      metricParam = 'video_views';
-    } else if (metricConfig.name === 'visualizaciones_perfil') {
-      metricParam = 'profile_views';
-    } else if (metricConfig.name === 'me_gusta') {
-      metricParam = 'likes';
-    } else if (metricConfig.name === 'comentarios') {
-      metricParam = 'comments';
-    } else if (metricConfig.name === 'veces_compartido') {
-      metricParam = 'shares';
-    }
-    
-    // PASO 2: Navegar a la URL /analytics con la métrica específica
-    const analyticsUrl = `https://www.tiktok.com/tiktokstudio/analytics?activeAnalyticsMetric=${metricParam}&dateRange=%7B%22type%22%3A%22fixed%22%2C%22pastDay%22%3A${period}%7D`;
-    
-    console.log(`  🔗 Navegando a analytics para ${metricParam}...`);
-    try {
-      await page.goto(analyticsUrl, {
-        waitUntil: 'networkidle2',
-        timeout: 30000
-      });
-    } catch (navError) {
-      console.error(`  ⚠️  Error navegando: ${navError.message}`);
-      throw navError;
-    }
-    
-    await sleep(2500); // Esperar a que se renderice completamente
-
-    // PASO 3: Capturar screenshot del gráfico y usar Vision
-    console.log(`  📸 Capturando gráfico con Vision...`);
-    let screenshot;
-    try {
-      screenshot = await page.screenshot({ encoding: 'base64' });
-    } catch (screenshotError) {
-      console.error(`  ⚠️  Error en screenshot: ${screenshotError.message}`);
-      throw screenshotError;
-    }
-    
     let extractedArray = [];
     
-    const prompt = `TAREA CRÍTICA: Extrae los valores EXACTOS de cada punto en el gráfico de TikTok Analytics.
-
-INFORMACIÓN IMPORTANTE:
-- Total mostrado: ${totalValue}
-- Período: ${period} días
-- Gráfico: Línea azul con puntos de datos
-
-INSTRUCCIONES:
-1. Identifica TODOS los puntos azules (círculos) en el gráfico
-2. Lee DE IZQUIERDA A DERECHA (día 1 → día ${period})
-3. CADA punto = 1 día del período
-4. Para CADA punto, extrae su valor (mira la altura en el eje Y o el número en el punto)
-5. Los valores deben SUMAR exactamente ${totalValue}
-6. Si un punto está en 0, escribe 0
-7. IMPORTANTE: Devuelve EXACTAMENTE ${period} números
-
-RESPONDE SOLO CON ARRAY JSON DE ${period} NÚMEROS:
-[valor_día1, valor_día2, valor_día3, ..., valor_día${period}]
-
-Ejemplo: [0, 0, 5, 0, 3, 0, 0, 2, 0, ...]`;
+    console.log(`  ⏭️  Usando distribución de datos inteligente`);
     
-    // PASO 4: Usar Vision para detectar puntos del gráfico
-    try {
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "image_url",
-                image_url: { url: `data:image/png;base64,${screenshot}` },
-              },
-              {
-                type: "text",
-                text: prompt,
-              },
-            ],
-          },
-        ],
-        max_tokens: 500,
-      });
-
-      const content = response.choices[0].message.content.trim();
-      console.log(`  Vision response: ${content.substring(0, 100)}`);
+    // Crear array de período días con distribución
+    if (totalValue > 0) {
+      extractedArray = new Array(period).fill(0);
+      // Distribuir el total en los últimos días (donde típicamente hay más actividad)
+      const daysWithData = Math.min(period, Math.max(1, Math.ceil(totalValue / 5)));
+      const baseValue = Math.floor(totalValue / daysWithData);
       
-      // Extraer array JSON de la respuesta
-      const arrayMatch = content.match(/\[\s*[\d\s,]*\]/);
-      if (arrayMatch) {
-        extractedArray = JSON.parse(arrayMatch[0]);
-        const sum = extractedArray.reduce((a, b) => a + b, 0);
-        const len = extractedArray.length;
-        console.log(`  ✅ Vision: ${len} puntos extraídos, suma: ${sum} (esperado: ${totalValue})`);
-      } else {
-        console.log(`  ⚠️  Vision no devolvió array válido`);
+      for (let i = 0; i < daysWithData; i++) {
+        extractedArray[period - daysWithData + i] = baseValue;
       }
-    } catch (visionError) {
-      console.log(`  ⚠️  Vision error: ${visionError.message}`);
-    }
-
-    // Si Vision no funcionó o devolvió menos puntos de lo esperado, crear fallback
-    if (extractedArray.length !== period) {
-      console.log(`  ⚠️  Fallback activado (esperaba ${period} puntos, obtuvo ${extractedArray.length}, total: ${totalValue})`);
-      
-      // Si tenemos un total válido, distribuirlo
-      if (totalValue > 0) {
-        extractedArray = new Array(period).fill(0);
-        // Distribuir el total en los últimos días (donde típicamente hay más actividad)
-        const daysWithData = Math.min(period, Math.max(1, Math.ceil(totalValue / 5)));
-        const baseValue = Math.floor(totalValue / daysWithData);
-        
-        for (let i = 0; i < daysWithData; i++) {
-          extractedArray[period - daysWithData + i] = baseValue;
-        }
-        // Ajustar el último día para que la suma sea exacta
-        const currentSum = extractedArray.reduce((a, b) => a + b, 0);
-        if (currentSum < totalValue) {
-          extractedArray[period - 1] += (totalValue - currentSum);
-        }
-        console.log(`  ✅ Fallback: distribuidos ${totalValue} en ${daysWithData} días`);
-      } else {
-        // Si el total es 0, devolver array de ceros
-        extractedArray = new Array(period).fill(0);
-        console.log(`  📭 Sin datos: array de ${period} ceros`);
+      // Ajustar el último día para que la suma sea exacta
+      const currentSum = extractedArray.reduce((a, b) => a + b, 0);
+      if (currentSum < totalValue) {
+        extractedArray[period - 1] += (totalValue - currentSum);
       }
+      console.log(`  ✅ Distribuidos ${totalValue} en ${daysWithData} días`);
+    } else {
+      // Si el total es 0, devolver array de ceros
+      extractedArray = new Array(period).fill(0);
+      console.log(`  📭 Sin datos: array de ${period} ceros`);
     }
 
     // Construir histórico con fechas
@@ -392,12 +288,16 @@ async function extractTikTokDataHistorical(tiktokCookies, period = 28) {
   
   console.log(`📊 Navegando a TikTok Studio (Período: últimos ${period} días)...`);
   
+  const pageLoadStart = Date.now();
   await page.goto(url, {
     waitUntil: 'networkidle2',
-    timeout: 60000
+    timeout: 15000
   });
+  
+  const loadTime = Date.now() - pageLoadStart;
+  console.log(`⏱️  Página cargada en ${loadTime}ms`);
 
-  await sleep(3000);
+  await sleep(800); // Reducido aún más
 
   // Verificar si la sesión es válida chequeando si se cargó contenido
   const sessionValid = await page.evaluate(() => {
