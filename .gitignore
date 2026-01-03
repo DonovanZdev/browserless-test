@@ -28,5 +28,6 @@ npm-debug.log*
 # Vercel
 .vercel
 
+#cookies
 .tiktok-cookies.json
 .facebook-cookies.json
