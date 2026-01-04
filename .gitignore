@@ -5,7 +5,9 @@ yarn.lock
 
 # Archivos sensibles
 fb-cookies.json
+facebook-cookies.json
 tiktok-cookies.json
+tiktok-cookies-new.json
 .env
 .env.local
 
@@ -27,7 +29,3 @@ npm-debug.log*
 
 # Vercel
 .vercel
-
-#cookies
-.tiktok-cookies.json
-.facebook-cookies.json
