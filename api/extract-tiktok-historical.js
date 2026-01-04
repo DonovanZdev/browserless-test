@@ -64,7 +64,15 @@ function parseCookies(cookies, domain = '.tiktok.com') {
 }
 
 // Función para extraer histórico desde API directa
-async function extractHistorical(cookies, referenceDate = null) {
+async function extractHistorical(cookies, referenceDate = null, period = 28) {
+  // Validar periodo válido
+  const validPeriods = [7, 14, 28, 30];
+  if (!validPeriods.includes(Number(period))) {
+    throw new Error(`Invalid period. Must be one of: ${validPeriods.join(', ')}`);
+  }
+  
+  const daysPeriod = Number(period);
+  
   const browser = await puppeteer.connect({
     browserWSEndpoint: `wss://production-sfo.browserless.io?token=${TOKEN}`,
   });
@@ -82,17 +90,17 @@ async function extractHistorical(cookies, referenceDate = null) {
     await page.setCookie(...cookieArray);
 
     console.log('🔐 Cookies configuradas');
-    console.log('🔍 Conectando a API de TikTok...');
+    console.log(`🔍 Conectando a API de TikTok... (Período: últimos ${daysPeriod} días)`);
 
-    // Construir parámetros para el request
+    // Construir parámetros para el request usando el periodo especificado
     const typeRequests = [
-      { "insigh_type": "vv_history", "days": 28, "end_days": 1 },
-      { "insigh_type": "pv_history", "days": 28, "end_days": 1 },
-      { "insigh_type": "like_history", "days": 28, "end_days": 1 },
-      { "insigh_type": "comment_history", "days": 28, "end_days": 1 },
-      { "insigh_type": "share_history", "days": 28, "end_days": 1 },
-      { "insigh_type": "follower_num_history", "days": 28, "end_days": 1 },
-      { "insigh_type": "reached_audience_history", "days": 28, "end_days": 1 }
+      { "insigh_type": "vv_history", "days": daysPeriod, "end_days": 1 },
+      { "insigh_type": "pv_history", "days": daysPeriod, "end_days": 1 },
+      { "insigh_type": "like_history", "days": daysPeriod, "end_days": 1 },
+      { "insigh_type": "comment_history", "days": daysPeriod, "end_days": 1 },
+      { "insigh_type": "share_history", "days": daysPeriod, "end_days": 1 },
+      { "insigh_type": "follower_num_history", "days": daysPeriod, "end_days": 1 },
+      { "insigh_type": "reached_audience_history", "days": daysPeriod, "end_days": 1 }
     ];
 
     // Construir URL del endpoint
@@ -133,7 +141,7 @@ async function extractHistorical(cookies, referenceDate = null) {
 
     console.log('✅ Datos descargados correctamente');
 
-    // Generar fechas para los últimos 28 días
+    // Generar fechas para el período solicitado
     // El array viene ordenado cronológicamente: primer elemento = más antiguo
     // end_days: 1 significa que los datos terminan AYER (no incluye hoy)
     const generateDatesWithValues = (values) => {
@@ -242,7 +250,10 @@ module.exports = async (req, res) => {
       referenceDate.setDate(referenceDate.getDate() - 1); // Ayer por defecto
     }
     
-    const result = await extractHistorical(cookies, referenceDate);
+    // Obtener el período del request (7, 14, 28, 30 días)
+    const period = req.body.period || 28;
+    
+    const result = await extractHistorical(cookies, referenceDate, period);
     res.status(200).json(result);
   } catch (error) {
     console.error('Error:', error);
@@ -258,7 +269,7 @@ if (require.main === module) {
   const fs = require('fs');
   const cookies = JSON.parse(fs.readFileSync('./tiktok-cookies-new.json', 'utf-8'));
   
-  extractHistorical(cookies)
+  extractHistorical(cookies, null, 28)
     .then(result => {
       console.log('\n✅ RESULTADO:');
       console.log(JSON.stringify(result, null, 2));
