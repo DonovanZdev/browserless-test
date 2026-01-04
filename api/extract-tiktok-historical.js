@@ -202,9 +202,22 @@ async function extractHistorical(cookies, referenceDate = null, period = 28) {
     });
 
     // Retornar datos ya transformados
+    // Información del período
+    const firstDateFormatted = firstDate.toISOString().split('T')[0];
+    const lastDateFormatted = yesterday.toISOString().split('T')[0];
+    
+    // Descripción legible del período
+    const periodDescription = `Últimos ${daysPeriod} días (sin incluir hoy)`;
+
     const historicalData = {
       timestamp: new Date().toISOString(),
       period: daysPeriod,
+      periodDescription: periodDescription,
+      dateRange: {
+        from: firstDateFormatted,
+        to: lastDateFormatted,
+        totalDays: daysPeriod
+      },
       query_date: yesterday.toISOString().split('T')[0],
       metrics: metrics
     };
