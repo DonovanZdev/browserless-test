@@ -90,35 +90,22 @@ async function extractHistorical(cookies, referenceDate = null, period = 28) {
     await page.setCookie(...cookieArray);
 
     console.log('🔐 Cookies configuradas');
-    console.log(`🔍 Conectando a API de TikTok... (Período: últimos ${daysPeriod} días)`);
+    console.log(`🔍 Conectando a API de TikTok... (Período solicitado: ${daysPeriod} días)`);
 
-    // Construir parámetros para el request usando el periodo especificado
+    // El API de TikTok retorna (period - 1) valores completos
+    // Para obtener 'period' días de datos reales, pedimos 'period + 1' al API
+    const apiPeriod = daysPeriod + 1;
+
+    // Construir parámetros para el request
     const typeRequests = [
-      { "insigh_type": "vv_history", "days": daysPeriod, "end_days": 1 },
-      { "insigh_type": "pv_history", "days": daysPeriod, "end_days": 1 },
-      { "insigh_type": "like_history", "days": daysPeriod, "end_days": 1 },
-      { "insigh_type": "comment_history", "days": daysPeriod, "end_days": 1 },
-      { "insigh_type": "share_history", "days": daysPeriod, "end_days": 1 },
-      { "insigh_type": "follower_num_history", "days": daysPeriod, "end_days": 1 },
-      { "insigh_type": "reached_audience_history", "days": daysPeriod, "end_days": 1 }
+      { "insigh_type": "vv_history", "days": apiPeriod, "end_days": 1 },
+      { "insigh_type": "pv_history", "days": apiPeriod, "end_days": 1 },
+      { "insigh_type": "like_history", "days": apiPeriod, "end_days": 1 },
+      { "insigh_type": "comment_history", "days": apiPeriod, "end_days": 1 },
+      { "insigh_type": "share_history", "days": apiPeriod, "end_days": 1 },
+      { "insigh_type": "follower_num_history", "days": apiPeriod, "end_days": 1 },
+      { "insigh_type": "reached_audience_history", "days": apiPeriod, "end_days": 1 }
     ];
-
-    // Construir URL del endpoint
-    const baseUrl = "https://www.tiktok.com/aweme/v2/data/insight/";
-    const params = new URLSearchParams({
-      locale: "en",
-      aid: "1988",
-      priority_region: "MX",
-      tz_name: "America/Mexico_City",
-      app_name: "tiktok_creator_center",
-      app_language: "en",
-      device_platform: "web_pc",
-      channel: "tiktok_web",
-      device_id: "7586552972738463288",
-      os: "win",
-      tz_offset: "-6",
-      type_requests: JSON.stringify(typeRequests)
-    });
 
     const url = `${baseUrl}?${params.toString()}`;
 
@@ -139,18 +126,19 @@ async function extractHistorical(cookies, referenceDate = null, period = 28) {
       throw new Error(`API error: ${metricsData?.status_msg || 'Unknown error'}`);
     }
 
-    console.log('✅ Datos descargados correctamente');
-
     // ✅ TRANSFORMACIÓN COMPLETA EN EL BACKEND
     // Función para procesar cada métrica
     function processMetric(rawArray) {
       if (!rawArray || rawArray.length === 0) return [];
       
       // Filtrar solo elementos completados (status === 0)
-      // LOS DATOS YA VIENEN EN ORDEN CORRECTO: oldest → newest
-      const completedValues = rawArray
+      // Tomar solo los últimos 'daysPeriod' elementos (ignorar el primero incompleto)
+      const allCompleted = rawArray
         .filter(item => item && item.status === 0)
         .map(item => item.value || 0);
+      
+      // Si tenemos más de daysPeriod valores, tomar solo los últimos daysPeriod
+      const completedValues = allCompleted.slice(-daysPeriod);
       
       return completedValues;
     }
@@ -162,11 +150,9 @@ async function extractHistorical(cookies, referenceDate = null, period = 28) {
     yesterday.setHours(0, 0, 0, 0);
     yesterday.setDate(yesterday.getDate() - 1);
 
-    // El API retorna datos sin el primer día del período
-    // Ejemplo: periodo 60 días = datos de los últimos 59 días + hoy (incomplete)
-    // Entonces necesitamos agregar 1 día más al inicio
+    // Calcular fecha inicial (ayer - (periodo - 1) días)
     const firstDate = new Date(yesterday);
-    firstDate.setDate(firstDate.getDate() - daysPeriod);
+    firstDate.setDate(firstDate.getDate() - (daysPeriod - 1));
 
     // Generar array de fechas
     const dates = [];
@@ -188,17 +174,9 @@ async function extractHistorical(cookies, referenceDate = null, period = 28) {
     };
 
     // Crear estructura de salida con fechas mapeadas
-    // Si hay menos valores que fechas, agregar 0 al inicio (para el primer día)
     const metrics = {};
     Object.keys(processedMetrics).forEach(metricName => {
-      let values = processedMetrics[metricName];
-      
-      // Si faltan valores (caso típico: 59 valores para 60 fechas)
-      // agregar 0 al inicio
-      if (values.length < daysPeriod) {
-        values = [0, ...values];
-      }
-      
+      const values = processedMetrics[metricName];
       const history = dates.map((date, i) => ({
         date: date,
         value: values[i] || 0
