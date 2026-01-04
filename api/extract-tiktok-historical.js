@@ -173,9 +173,9 @@ async function extractHistorical(cookies, referenceDate = null, period = 28) {
       const daysToShow = Math.min(validValues.length, daysPeriod);
       const selectedValues = validValues.slice(-daysToShow);
       
-      // TikTok devuelve fechas 2 días adelantadas, así que ajustamos restando 2 días
+      // TikTok devuelve fechas 1 día adelantadas, así que ajustamos restando 1 día
       let firstDate = new Date(lastDate);
-      firstDate.setDate(firstDate.getDate() - (selectedValues.length - 1) - 2); // -2 para ajustar el desplazamiento de TikTok
+      firstDate.setDate(firstDate.getDate() - (selectedValues.length - 1) - 1);
       
       for (let i = 0; i < selectedValues.length; i++) {
         const date = new Date(firstDate);
