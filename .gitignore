@@ -5,7 +5,7 @@ yarn.lock
 
 # Archivos sensibles
 fb-cookies.json
-facebook-cookies.json
+.facebook-cookies.json
 tiktok-cookies.json
 tiktok-cookies-new.json
 .env
