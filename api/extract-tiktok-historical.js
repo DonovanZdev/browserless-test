@@ -66,7 +66,7 @@ function parseCookies(cookies, domain = '.tiktok.com') {
 // Función para extraer histórico desde API directa
 async function extractHistorical(cookies, referenceDate = null, period = 28) {
   // Validar periodo válido
-  const validPeriods = [7, 14, 28, 30];
+  const validPeriods = [7, 14, 28, 30, 60];
   if (!validPeriods.includes(Number(period))) {
     throw new Error(`Invalid period. Must be one of: ${validPeriods.join(', ')}`);
   }
