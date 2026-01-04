@@ -166,21 +166,25 @@ async function extractHistorical(cookies, referenceDate = null, period = 28) {
       
       const dateArray = [];
       
-      // Filtrar solo valores con status 0 o que no sean null
-      const validValues = values.filter(v => v.status === 0 || v.value !== null);
+      // Filtrar solo valores completados (status === 0), excluyendo datos incompletos de hoy
+      const validValues = values.filter(v => v.status === 0);
+      
+      // Solo tomar los últimos N días solicitados (period)
+      const daysToShow = Math.min(validValues.length, daysPeriod);
+      const selectedValues = validValues.slice(-daysToShow);
       
       // El array parece estar desplazado un día hacia atrás, así que agregamos 1 día al rango
       let firstDate = new Date(lastDate);
-      firstDate.setDate(firstDate.getDate() - (validValues.length - 1) + 1); // Ajuste de +1 día
+      firstDate.setDate(firstDate.getDate() - (selectedValues.length - 1) + 1); // Ajuste de +1 día
       
-      for (let i = 0; i < validValues.length; i++) {
+      for (let i = 0; i < selectedValues.length; i++) {
         const date = new Date(firstDate);
         date.setDate(date.getDate() + i);
         
         dateArray.push({
           date: date.toISOString().split('T')[0], // Format: YYYY-MM-DD
-          value: validValues[i].status === 0 ? validValues[i].value : null,
-          status: validValues[i].status
+          value: selectedValues[i].status === 0 ? selectedValues[i].value : null,
+          status: selectedValues[i].status
         });
       }
       
