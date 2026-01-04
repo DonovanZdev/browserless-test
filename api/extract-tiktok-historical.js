@@ -141,20 +141,73 @@ async function extractHistorical(cookies, referenceDate = null, period = 28) {
 
     console.log('✅ Datos descargados correctamente');
 
-    // Devolver datos RAW del API sin transformación de fechas
-    // El cliente (n8n) será responsable de mapear fechas correctamente
+    // ✅ TRANSFORMACIÓN COMPLETA EN EL BACKEND
+    // Función para procesar cada métrica
+    function processMetric(rawArray) {
+      if (!rawArray || rawArray.length === 0) return [];
+      
+      // 1. Filtrar solo elementos completados (status === 0)
+      const completedValues = rawArray
+        .filter(item => item && item.status === 0)
+        .map(item => item.value || 0);
+      
+      // 2. Invertir para convertir de newest-to-oldest → oldest-to-newest
+      completedValues.reverse();
+      
+      return completedValues;
+    }
+
+    // Obtener ayer en México (UTC-6)
+    const now = new Date();
+    const mexicoDate = new Date(now.getTime() - (6 * 60 * 60 * 1000));
+    const yesterday = new Date(mexicoDate);
+    yesterday.setHours(0, 0, 0, 0);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    // Calcular fecha inicial (ayer - (periodo - 1) días)
+    const firstDate = new Date(yesterday);
+    firstDate.setDate(firstDate.getDate() - (daysPeriod - 1));
+
+    // Generar array de fechas
+    const dates = [];
+    for (let i = 0; i < daysPeriod; i++) {
+      const date = new Date(firstDate);
+      date.setDate(date.getDate() + i);
+      dates.push(date.toISOString().split('T')[0]);
+    }
+
+    // Procesar todas las métricas
+    const processedMetrics = {
+      video_views: processMetric(metricsData.vv_history || []),
+      profile_views: processMetric(metricsData.pv_history || []),
+      likes: processMetric(metricsData.like_history || []),
+      comments: processMetric(metricsData.comment_history || []),
+      shares: processMetric(metricsData.share_history || []),
+      reached_audience: processMetric(metricsData.reached_audience_history || []),
+      followers: processMetric(metricsData.follower_num_history || [])
+    };
+
+    // Crear estructura de salida con fechas mapeadas
+    const metrics = {};
+    Object.keys(processedMetrics).forEach(metricName => {
+      const values = processedMetrics[metricName];
+      const history = dates.map((date, i) => ({
+        date: date,
+        value: values[i] || 0
+      }));
+      
+      metrics[metricName] = {
+        total: values.reduce((a, b) => a + (b || 0), 0),
+        history: history
+      };
+    });
+
+    // Retornar datos ya transformados
     const historicalData = {
       timestamp: new Date().toISOString(),
       period: daysPeriod,
-      raw_metrics: {
-        video_views: metricsData.vv_history || [],
-        profile_views: metricsData.pv_history || [],
-        likes: metricsData.like_history || [],
-        comments: metricsData.comment_history || [],
-        shares: metricsData.share_history || [],
-        reached_audience: metricsData.reached_audience_history || [],
-        followers: metricsData.follower_num_history || []
-      }
+      query_date: yesterday.toISOString().split('T')[0],
+      metrics: metrics
     };
 
     await page.close();
