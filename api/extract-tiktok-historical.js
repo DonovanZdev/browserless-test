@@ -146,13 +146,11 @@ async function extractHistorical(cookies, referenceDate = null, period = 28) {
     function processMetric(rawArray) {
       if (!rawArray || rawArray.length === 0) return [];
       
-      // 1. Filtrar solo elementos completados (status === 0)
+      // Filtrar solo elementos completados (status === 0)
+      // LOS DATOS YA VIENEN EN ORDEN CORRECTO: oldest → newest
       const completedValues = rawArray
         .filter(item => item && item.status === 0)
         .map(item => item.value || 0);
-      
-      // 2. Invertir para convertir de newest-to-oldest → oldest-to-newest
-      completedValues.reverse();
       
       return completedValues;
     }
@@ -164,9 +162,11 @@ async function extractHistorical(cookies, referenceDate = null, period = 28) {
     yesterday.setHours(0, 0, 0, 0);
     yesterday.setDate(yesterday.getDate() - 1);
 
-    // Calcular fecha inicial (ayer - (periodo - 1) días)
+    // El API retorna datos sin el primer día del período
+    // Ejemplo: periodo 60 días = datos de los últimos 59 días + hoy (incomplete)
+    // Entonces necesitamos agregar 1 día más al inicio
     const firstDate = new Date(yesterday);
-    firstDate.setDate(firstDate.getDate() - (daysPeriod - 1));
+    firstDate.setDate(firstDate.getDate() - daysPeriod);
 
     // Generar array de fechas
     const dates = [];
@@ -188,9 +188,17 @@ async function extractHistorical(cookies, referenceDate = null, period = 28) {
     };
 
     // Crear estructura de salida con fechas mapeadas
+    // Si hay menos valores que fechas, agregar 0 al inicio (para el primer día)
     const metrics = {};
     Object.keys(processedMetrics).forEach(metricName => {
-      const values = processedMetrics[metricName];
+      let values = processedMetrics[metricName];
+      
+      // Si faltan valores (caso típico: 59 valores para 60 fechas)
+      // agregar 0 al inicio
+      if (values.length < daysPeriod) {
+        values = [0, ...values];
+      }
+      
       const history = dates.map((date, i) => ({
         date: date,
         value: values[i] || 0
