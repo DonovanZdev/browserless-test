@@ -36,10 +36,7 @@ function processMetric(rawArray, metricName) {
   if (!rawArray) return null;
   
   // Filtrar solo elementos completados (status === 0)
-  let completedValues = rawArray.filter(item => item && item.status === 0).map(item => item.value);
-  
-  // Invertir para obtener orden correcto (TikTok retorna del más reciente al más antiguo)
-  completedValues = completedValues.reverse();
+  const completedValues = rawArray.filter(item => item && item.status === 0).map(item => item.value);
   
   // Función para generar array de fechas
   function generateHistoryWithDates(values) {
