@@ -5,6 +5,9 @@
     },
     "api/extract-all-platforms.js": {
       "maxDuration": 60
+    },
+    "api/debug-raw-metrics.js": {
+      "maxDuration": 60
     }
   }
 }
