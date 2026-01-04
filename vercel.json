@@ -1,8 +1,5 @@
 {
   "functions": {
-    "api/extract-tiktok.js": {
-      "maxDuration": 60
-    },
     "api/extract-tiktok-historical.js": {
       "maxDuration": 60
     },
