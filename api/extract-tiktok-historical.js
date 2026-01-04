@@ -248,7 +248,90 @@ module.exports = async (req, res) => {
     // Obtener el período del request (7, 14, 28, 30 días)
     const period = req.body.period || 28;
     
+    // Guardar cookies originales para análisis de expiración
+    const originalCookies = Array.isArray(cookies) ? cookies : [];
+    
     const result = await extractHistorical(cookies, referenceDate, period);
+    
+    // Agregar análisis de expiración de cookies al resultado
+    const now = new Date();
+    const nowTimestamp = now.getTime() / 1000;
+
+    const cookieExpirationAnalysis = {
+      analysisTimestamp: now.toISOString(),
+      totalCookies: originalCookies.length,
+      soonestExpiring: null,
+      expiredCookies: [],
+      expiringInWeek: [],
+      allCookies: []
+    };
+
+    originalCookies.forEach(cookie => {
+      if (!cookie.expirationDate) {
+        cookieExpirationAnalysis.allCookies.push({
+          name: cookie.name,
+          domain: cookie.domain,
+          status: 'SESSION',
+          expirationDate: 'Never (session cookie)'
+        });
+        return;
+      }
+
+      const expTimestamp = cookie.expirationDate;
+      const secondsUntilExpiry = expTimestamp - nowTimestamp;
+      const daysUntilExpiry = secondsUntilExpiry / (60 * 60 * 24);
+      const expDate = new Date(expTimestamp * 1000);
+      const isExpired = secondsUntilExpiry <= 0;
+      const isExpiringSoon = daysUntilExpiry <= 7 && daysUntilExpiry > 0;
+
+      const cookieInfo = {
+        name: cookie.name,
+        domain: cookie.domain,
+        expirationDate: expDate.toISOString(),
+        expirationDateFormatted: expDate.toLocaleString('es-MX'),
+        daysUntilExpiry: parseFloat(daysUntilExpiry.toFixed(2)),
+        status: isExpired ? 'EXPIRED' : isExpiringSoon ? 'EXPIRING_SOON' : 'VALID'
+      };
+
+      cookieExpirationAnalysis.allCookies.push(cookieInfo);
+
+      if (isExpired) {
+        cookieExpirationAnalysis.expiredCookies.push({
+          name: cookie.name,
+          domain: cookie.domain,
+          expiredDate: expDate.toLocaleString('es-MX'),
+          daysOverdue: parseFloat(Math.abs(daysUntilExpiry).toFixed(2))
+        });
+      }
+
+      if (isExpiringSoon) {
+        cookieExpirationAnalysis.expiringInWeek.push({
+          name: cookie.name,
+          domain: cookie.domain,
+          expirationDate: expDate.toLocaleString('es-MX'),
+          daysRemaining: parseFloat(daysUntilExpiry.toFixed(2))
+        });
+      }
+
+      if (!isExpired && (!cookieExpirationAnalysis.soonestExpiring || expDate < new Date(cookieExpirationAnalysis.soonestExpiring.expirationDate))) {
+        cookieExpirationAnalysis.soonestExpiring = {
+          name: cookie.name,
+          domain: cookie.domain,
+          expirationDate: expDate.toLocaleString('es-MX'),
+          daysUntilExpiry: parseFloat(daysUntilExpiry.toFixed(2))
+        };
+      }
+    });
+
+    cookieExpirationAnalysis.allCookies.sort((a, b) => {
+      if (a.status === 'SESSION') return 1;
+      if (b.status === 'SESSION') return -1;
+      const dateA = a.expirationDate === 'Never (session cookie)' ? Infinity : new Date(a.expirationDate);
+      const dateB = b.expirationDate === 'Never (session cookie)' ? Infinity : new Date(b.expirationDate);
+      return dateA - dateB;
+    });
+
+    result.cookies = cookieExpirationAnalysis;
     res.status(200).json(result);
   } catch (error) {
     console.error('Error:', error);
