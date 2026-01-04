@@ -108,15 +108,15 @@ async function extractHistorical(cookies, referenceDate = null, period = 28) {
     const params = new URLSearchParams({
       locale: "en",
       aid: "1988",
-      priority_region: "US",
-      tz_name: "UTC",
+      priority_region: "MX",
+      tz_name: "America/Mexico_City",
       app_name: "tiktok_creator_center",
       app_language: "en",
       device_platform: "web_pc",
       channel: "tiktok_web",
       device_id: "7586552972738463288",
       os: "win",
-      tz_offset: "0",
+      tz_offset: "-6",
       type_requests: JSON.stringify(typeRequests)
     });
 
