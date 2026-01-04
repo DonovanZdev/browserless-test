@@ -107,7 +107,22 @@ async function extractHistorical(cookies, referenceDate = null, period = 28) {
       { "insigh_type": "reached_audience_history", "days": apiPeriod, "end_days": 1 }
     ];
 
-    const url = `${baseUrl}?${params.toString()}`;
+    // Construir URL del endpoint
+    const baseUrl = "https://www.tiktok.com/aweme/v2/data/insight/";
+    const params = new URLSearchParams({
+      locale: "en",
+      aid: "1988",
+      priority_region: "MX",
+      tz_name: "America/Mexico_City",
+      app_name: "tiktok_creator_center",
+      app_language: "en",
+      device_platform: "web_pc",
+      channel: "tiktok_web",
+      device_id: "7586552972738463288",
+      os: "win",
+      tz_offset: "-6",
+      type_requests: JSON.stringify(typeRequests)
+    });
 
     // Navegar al endpoint
     console.log('📡 Solicitando datos históricos...');
