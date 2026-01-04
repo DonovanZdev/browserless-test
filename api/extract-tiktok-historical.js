@@ -141,100 +141,19 @@ async function extractHistorical(cookies, referenceDate = null, period = 28) {
 
     console.log('✅ Datos descargados correctamente');
 
-    // Generar fechas para el período solicitado
-    // El array viene ordenado cronológicamente: primer elemento = más antiguo
-    // end_days: 1 significa que los datos terminan AYER (no incluye hoy)
-    const generateDatesWithValues = (values) => {
-      // Parsear la fecha de referencia sin conversión de zona horaria
-      let lastDate;
-      if (referenceDate) {
-        // Si es string, parsear en formato YYYY-MM-DD
-        if (typeof referenceDate === 'string') {
-          const parts = referenceDate.split('-');
-          lastDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-        } else {
-          // Si es objeto Date, clonar y resetear horas
-          lastDate = new Date(referenceDate);
-          lastDate.setHours(0, 0, 0, 0);
-        }
-      } else {
-        // Usar hoy como referencia
-        lastDate = new Date();
-        lastDate.setHours(0, 0, 0, 0);
-        lastDate.setDate(lastDate.getDate() - 1); // Ayer por defecto
-      }
-      
-      const dateArray = [];
-      
-      // Filtrar solo valores completados (status === 0), excluyendo datos incompletos de hoy
-      const validValues = values.filter(v => v.status === 0);
-      
-      // Solo tomar los últimos N días solicitados (period)
-      const daysToShow = Math.min(validValues.length, daysPeriod);
-      const selectedValues = validValues.slice(-daysToShow);
-      
-      // Calcular la fecha de inicio: si tengo N elementos, empiezo hace N-1 días desde lastDate
-      let firstDate = new Date(lastDate);
-      firstDate.setDate(firstDate.getDate() - (selectedValues.length - 1));
-      
-      for (let i = 0; i < selectedValues.length; i++) {
-        const date = new Date(firstDate);
-        date.setDate(date.getDate() + i);
-        
-        dateArray.push({
-          date: date.toISOString().split('T')[0], // Format: YYYY-MM-DD
-          value: selectedValues[i].status === 0 ? selectedValues[i].value : null,
-          status: selectedValues[i].status
-        });
-      }
-      
-      return dateArray;
-    };
-
-    // Procesar y estructurar datos
+    // Devolver datos RAW del API sin transformación de fechas
+    // El cliente (n8n) será responsable de mapear fechas correctamente
     const historicalData = {
       timestamp: new Date().toISOString(),
-      metrics: {
-        video_views: {
-          total: metricsData.vv_history?.reduce((sum, item) => {
-            return sum + (item.status === 0 ? item.value : 0);
-          }, 0) || 0,
-          history: generateDatesWithValues(metricsData.vv_history || [])
-        },
-        profile_views: {
-          total: metricsData.pv_history?.reduce((sum, item) => {
-            return sum + (item.status === 0 ? item.value : 0);
-          }, 0) || 0,
-          history: generateDatesWithValues(metricsData.pv_history || [])
-        },
-        likes: {
-          total: metricsData.like_history?.reduce((sum, item) => {
-            return sum + (item.status === 0 ? item.value : 0);
-          }, 0) || 0,
-          history: generateDatesWithValues(metricsData.like_history || [])
-        },
-        comments: {
-          total: metricsData.comment_history?.reduce((sum, item) => {
-            return sum + (item.status === 0 ? item.value : 0);
-          }, 0) || 0,
-          history: generateDatesWithValues(metricsData.comment_history || [])
-        },
-        shares: {
-          total: metricsData.share_history?.reduce((sum, item) => {
-            return sum + (item.status === 0 ? item.value : 0);
-          }, 0) || 0,
-          history: generateDatesWithValues(metricsData.share_history || [])
-        },
-        reached_audience: {
-          total: metricsData.reached_audience_history?.reduce((sum, item) => {
-            return sum + (item.status === 0 ? item.value : 0);
-          }, 0) || 0,
-          history: generateDatesWithValues(metricsData.reached_audience_history || [])
-        },
-        followers: {
-          current: metricsData.follower_num?.value || 0,
-          history: generateDatesWithValues(metricsData.follower_num_history || [])
-        }
+      period: daysPeriod,
+      raw_metrics: {
+        video_views: metricsData.vv_history || [],
+        profile_views: metricsData.pv_history || [],
+        likes: metricsData.like_history || [],
+        comments: metricsData.comment_history || [],
+        shares: metricsData.share_history || [],
+        reached_audience: metricsData.reached_audience_history || [],
+        followers: metricsData.follower_num_history || []
       }
     };
 
