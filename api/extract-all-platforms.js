@@ -484,16 +484,16 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
     }
     
     // Calcular totalValue sumando values históricos
-    // EXCEPTO Espectadores/Alcance (cuentas únicas, no sumables)
+    // EXCEPTO Espectadores (cuentas únicas de Facebook, no sumable)
     let calculatedTotal = metricValues.totalValue;
     
     const metricNameForComparison = metricConfig.name;
-    if ((metricNameForComparison === 'Espectadores' || metricNameForComparison === 'Alcance') && historicalData.length > 0) {
-      // Para Espectadores/Alcance: usar el último valor (es una métrica de cuentas únicas)
+    if (metricNameForComparison === 'Espectadores' && historicalData.length > 0) {
+      // Para Espectadores (Facebook): usar el último valor (es una métrica de cuentas únicas)
       const lastValue = historicalData[historicalData.length - 1]?.valor;
       if (lastValue) calculatedTotal = lastValue;
     } else if (historicalData.length > 0) {
-      // Para todas las demás métricas (incluyendo Seguidores): sumar
+      // Para todas las demás métricas (incluyendo Seguidores y Alcance de Instagram): sumar
       const sum = historicalData.reduce((acc, item) => {
         return acc + (parseInt(item.valor) || 0);
       }, 0);
