@@ -145,26 +145,36 @@ async function extractHistorical(cookies, referenceDate = null, period = 28) {
     // El array viene ordenado cronológicamente: primer elemento = más antiguo
     // end_days: 1 significa que los datos terminan AYER (no incluye hoy)
     const generateDatesWithValues = (values) => {
-      // Usar la fecha de referencia proporcionada o calcular desde hoy
-      let lastDate = referenceDate ? new Date(referenceDate) : new Date();
-      if (!referenceDate) {
+      // Parsear la fecha de referencia sin conversión de zona horaria
+      let lastDate;
+      if (referenceDate) {
+        // Crear fecha local sin considerar UTC
+        const parts = referenceDate.split('-');
+        lastDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+      } else {
+        // Usar hoy como referencia
+        lastDate = new Date();
+        lastDate.setHours(0, 0, 0, 0);
         lastDate.setDate(lastDate.getDate() - 1); // Ayer por defecto
       }
       
       const dateArray = [];
       
+      // Filtrar solo valores con status 0 o que no sean null
+      const validValues = values.filter(v => v.status === 0 || v.value !== null);
+      
       // El array parece estar desplazado un día hacia atrás, así que agregamos 1 día al rango
       let firstDate = new Date(lastDate);
-      firstDate.setDate(firstDate.getDate() - (values.length - 1) + 1); // Ajuste de +1 día
+      firstDate.setDate(firstDate.getDate() - (validValues.length - 1) + 1); // Ajuste de +1 día
       
-      for (let i = 0; i < values.length; i++) {
+      for (let i = 0; i < validValues.length; i++) {
         const date = new Date(firstDate);
         date.setDate(date.getDate() + i);
         
         dateArray.push({
           date: date.toISOString().split('T')[0], // Format: YYYY-MM-DD
-          value: values[i].status === 0 ? values[i].value : null,
-          status: values[i].status
+          value: validValues[i].status === 0 ? validValues[i].value : null,
+          status: validValues[i].status
         });
       }
       
