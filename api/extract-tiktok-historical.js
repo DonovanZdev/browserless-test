@@ -124,6 +124,8 @@ async function extractHistorical(cookies, referenceDate = null, period = 28) {
       type_requests: JSON.stringify(typeRequests)
     });
 
+    const url = `${baseUrl}?${params.toString()}`;
+
     // Navegar al endpoint
     console.log('📡 Solicitando datos históricos...');
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 15000 });
