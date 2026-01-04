@@ -148,9 +148,15 @@ async function extractHistorical(cookies, referenceDate = null, period = 28) {
       // Parsear la fecha de referencia sin conversión de zona horaria
       let lastDate;
       if (referenceDate) {
-        // Crear fecha local sin considerar UTC
-        const parts = referenceDate.split('-');
-        lastDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+        // Si es string, parsear en formato YYYY-MM-DD
+        if (typeof referenceDate === 'string') {
+          const parts = referenceDate.split('-');
+          lastDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+        } else {
+          // Si es objeto Date, clonar y resetear horas
+          lastDate = new Date(referenceDate);
+          lastDate.setHours(0, 0, 0, 0);
+        }
       } else {
         // Usar hoy como referencia
         lastDate = new Date();
