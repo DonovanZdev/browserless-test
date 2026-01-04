@@ -102,9 +102,7 @@ async function extractHistorical(cookies, referenceDate = null, period = 28) {
       { "insigh_type": "pv_history", "days": apiPeriod, "end_days": 1 },
       { "insigh_type": "like_history", "days": apiPeriod, "end_days": 1 },
       { "insigh_type": "comment_history", "days": apiPeriod, "end_days": 1 },
-      { "insigh_type": "share_history", "days": apiPeriod, "end_days": 1 },
-      { "insigh_type": "follower_num_history", "days": apiPeriod, "end_days": 1 },
-      { "insigh_type": "reached_audience_history", "days": apiPeriod, "end_days": 1 }
+      { "insigh_type": "share_history", "days": apiPeriod, "end_days": 1 }
     ];
 
     // Construir URL del endpoint
@@ -185,9 +183,7 @@ async function extractHistorical(cookies, referenceDate = null, period = 28) {
       profile_views: processMetric(metricsData.pv_history || []),
       likes: processMetric(metricsData.like_history || []),
       comments: processMetric(metricsData.comment_history || []),
-      shares: processMetric(metricsData.share_history || []),
-      reached_audience: processMetric(metricsData.reached_audience_history || []),
-      followers: processMetric(metricsData.follower_num_history || [])
+      shares: processMetric(metricsData.share_history || [])
     };
 
     // Crear estructura de salida con fechas mapeadas
