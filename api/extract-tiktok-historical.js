@@ -203,8 +203,15 @@ async function extractHistorical(cookies, referenceDate = null, period = 28) {
 
     // Retornar datos ya transformados
     // Información del período
-    const firstDateFormatted = firstDate.toISOString().split('T')[0];
-    const lastDateFormatted = yesterday.toISOString().split('T')[0];
+    const formatDate = (date) => {
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      return `${day}/${month}/${year}`;
+    };
+    
+    const firstDateFormatted = formatDate(firstDate);
+    const lastDateFormatted = formatDate(yesterday);
     
     // Descripción legible del período
     const periodDescription = `Últimos ${daysPeriod} días (sin incluir hoy)`;
