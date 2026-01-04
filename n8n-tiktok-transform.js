@@ -36,17 +36,19 @@ function processMetric(rawArray, metricName) {
   if (!rawArray) return null;
   
   // Filtrar solo elementos completados (status === 0)
-  const completedValues = rawArray.filter(item => item && item.status === 0).map(item => item.value);
+  let completedValues = rawArray.filter(item => item && item.status === 0).map(item => item.value);
+  
+  // Invertir para obtener orden correcto (TikTok retorna del más reciente al más antiguo)
+  completedValues = completedValues.reverse();
   
   // Función para generar array de fechas
   function generateHistoryWithDates(values) {
     const result = [];
     
-    // Si tenemos menos valores que period, rellenar desde el inicio con 0s
-    const targetLength = Math.max(values.length, period);
-    const paddingNeeded = targetLength - values.length;
+    // Siempre usar exactamente 'period' elementos para el rango de fechas
+    const targetLength = period;
     
-    // Calcular la fecha de inicio
+    // Calcular la fecha de inicio basada en 'period'
     const firstDate = new Date(yesterdayMexico);
     firstDate.setDate(firstDate.getDate() - (period - 1));
     
@@ -56,7 +58,8 @@ function processMetric(rawArray, metricName) {
       date.setDate(date.getDate() + i);
       
       const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD
-      const value = i < paddingNeeded ? 0 : values[i - paddingNeeded];
+      // Si no hay valor para este índice, usar 0
+      const value = values[i] !== undefined ? values[i] : 0;
       
       result.push({
         date: dateStr,

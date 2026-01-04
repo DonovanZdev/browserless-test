@@ -143,18 +143,17 @@ async function extractHistorical(cookies, referenceDate = null, period = 28) {
 
     // Devolver datos RAW del API sin transformación de fechas
     // El cliente (n8n) será responsable de mapear fechas correctamente
-    // IMPORTANTE: Invertir los arrays porque TikTok retorna del más reciente al más antiguo
     const historicalData = {
       timestamp: new Date().toISOString(),
       period: daysPeriod,
       raw_metrics: {
-        video_views: (metricsData.vv_history || []).reverse(),
-        profile_views: (metricsData.pv_history || []).reverse(),
-        likes: (metricsData.like_history || []).reverse(),
-        comments: (metricsData.comment_history || []).reverse(),
-        shares: (metricsData.share_history || []).reverse(),
-        reached_audience: (metricsData.reached_audience_history || []).reverse(),
-        followers: (metricsData.follower_num_history || []).reverse()
+        video_views: metricsData.vv_history || [],
+        profile_views: metricsData.pv_history || [],
+        likes: metricsData.like_history || [],
+        comments: metricsData.comment_history || [],
+        shares: metricsData.share_history || [],
+        reached_audience: metricsData.reached_audience_history || [],
+        followers: metricsData.follower_num_history || []
       }
     };
 
