@@ -64,7 +64,7 @@ const rows = Array.from(daysMap.values())
     'Fecha': day.fecha,
     'Fecha ISO': day.date,
     'Visualizaciones': parseInt(day.Visualizaciones || '0'),
-    'Espectadores': parseInt(day.Espectadores || '0'),
+    'Alcance': parseInt(day.Alcance || '0'),
     'Interacciones': parseInt(day.Interacciones || '0'),
     'Clics enlace': parseInt(day['Clics enlace'] || '0'),
     'Visitas': parseInt(day.Visitas || '0'),

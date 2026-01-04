@@ -379,11 +379,9 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
   
   const metricsData = {};
   
-  // Para Instagram, usar "Alcance" en lugar de "Espectadores"
-  const isInstagram = platform === 'Instagram';
   const metrics = [
-    { name: 'Visualizaciones', keyword: 'Visualizaciones', exclude: isInstagram ? 'Alcance' : 'Espectadores' },
-    { name: isInstagram ? 'Alcance' : 'Espectadores', keyword: isInstagram ? 'Alcance' : 'Espectadores', exclude: null },
+    { name: 'Visualizaciones', keyword: 'Visualizaciones', exclude: 'Espectadores' },
+    { name: 'Espectadores', keyword: 'Espectadores', exclude: null },
     { name: 'Interacciones', keyword: 'Interacciones con el contenido', exclude: null },
     { name: 'Clics enlace', keyword: 'Clics en el enlace', exclude: null },
     { name: 'Visitas', keyword: 'Visitas', exclude: 'Clics' },
@@ -484,12 +482,11 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
     }
     
     // Calcular totalValue sumando values históricos
-    // EXCEPTO Espectadores/Alcance (cuentas únicas, no sumables)
+    // EXCEPTO Espectadores (cuentas únicas, no sumables)
     let calculatedTotal = metricValues.totalValue;
     
-    const metricNameForComparison = metricConfig.name;
-    if ((metricNameForComparison === 'Espectadores' || metricNameForComparison === 'Alcance') && historicalData.length > 0) {
-      // Para Espectadores/Alcance: usar el último valor (es una métrica de cuentas únicas)
+    if (metricConfig.name === 'Espectadores' && historicalData.length > 0) {
+      // Para Espectadores: usar el último valor (es una métrica de cuentas únicas)
       const lastValue = historicalData[historicalData.length - 1]?.valor;
       if (lastValue) calculatedTotal = lastValue;
     } else if (historicalData.length > 0) {
