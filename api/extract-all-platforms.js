@@ -12,6 +12,107 @@ async function sleep(ms) {
 }
 
 /**
+ * Analiza la expiración de las cookies del navegador
+ * Devuelve información sobre cookies que caducan pronto, expiradas, etc.
+ */
+async function analyzeCookieExpiration(page, domain = '.facebook.com') {
+  try {
+    const pageCoookies = await page.cookies();
+    
+    const analysisTimestamp = new Date();
+    const analysis = {
+      analysisTimestamp: analysisTimestamp.toISOString(),
+      totalCookies: pageCoookies.length,
+      soonestExpiring: null,
+      expiredCookies: [],
+      expiringInWeek: [],
+      allCookies: []
+    };
+
+    let soonestExpiryTime = Infinity;
+
+    for (const cookie of pageCoookies) {
+      // Si no tiene expires o es -1, es una session cookie
+      if (!cookie.expires || cookie.expires === -1) {
+        analysis.allCookies.push({
+          name: cookie.name,
+          domain: cookie.domain,
+          status: 'SESSION',
+          expirationDate: 'Never (session cookie)'
+        });
+        continue;
+      }
+
+      const expiryDate = new Date(cookie.expires * 1000);
+      const now = new Date();
+      const daysUntilExpiry = (expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+      
+      // Formatear fecha
+      const monthNum = expiryDate.getMonth();
+      const months = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
+      const dayNum = expiryDate.getDate();
+      const hours = String(expiryDate.getHours()).padStart(2, '0');
+      const minutes = String(expiryDate.getMinutes()).padStart(2, '0');
+      const seconds = String(expiryDate.getSeconds()).padStart(2, '0');
+      const ampm = expiryDate.getHours() >= 12 ? 'p.m.' : 'a.m.';
+      const formattedDate = `${dayNum}/${months[monthNum]}/${expiryDate.getFullYear()}, ${hours}:${minutes}:${seconds} ${ampm}`;
+
+      let status = 'VALID';
+      
+      if (daysUntilExpiry < 0) {
+        status = 'EXPIRED';
+        analysis.expiredCookies.push({
+          name: cookie.name,
+          domain: cookie.domain,
+          expirationDate: formattedDate,
+          daysOverdue: Math.abs(daysUntilExpiry)
+        });
+      } else if (daysUntilExpiry < 7) {
+        status = 'EXPIRING_SOON';
+        analysis.expiringInWeek.push({
+          name: cookie.name,
+          domain: cookie.domain,
+          expirationDate: formattedDate,
+          daysRemaining: daysUntilExpiry
+        });
+      }
+
+      analysis.allCookies.push({
+        name: cookie.name,
+        domain: cookie.domain,
+        expirationDate: expiryDate.toISOString(),
+        expirationDateFormatted: formattedDate,
+        daysUntilExpiry: Math.round(daysUntilExpiry * 100) / 100,
+        status: status
+      });
+
+      if (daysUntilExpiry > 0 && daysUntilExpiry < soonestExpiryTime) {
+        soonestExpiryTime = daysUntilExpiry;
+        analysis.soonestExpiring = {
+          name: cookie.name,
+          domain: cookie.domain,
+          expirationDate: formattedDate,
+          daysUntilExpiry: Math.round(daysUntilExpiry * 100) / 100
+        };
+      }
+    }
+
+    return analysis;
+  } catch (e) {
+    console.error('⚠️  Error analizando cookies:', e.message);
+    return {
+      analysisTimestamp: new Date().toISOString(),
+      totalCookies: 0,
+      soonestExpiring: null,
+      expiredCookies: [],
+      expiringInWeek: [],
+      allCookies: [],
+      error: e.message
+    };
+  }
+}
+
+/**
  * Parsea cookies de cualquier formato (string JSON, objeto, array)
  * Soporta dos formatos principales:
  * 1. Array de objetos: [{name: "x", value: "y"}, ...]
@@ -509,13 +610,17 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
     console.log(`  ✅ ${metricConfig.name}: ${historicalData.length} puntos | Total: ${calculatedTotal}`);
   }
 
+  // Analizar expiración de cookies
+  const cookieAnalysis = await analyzeCookieExpiration(page, '.facebook.com');
+
   await browser.close();
 
   return {
     platform: platform,
     period: period,
     extractedAt: new Date().toISOString(),
-    metrics: metricsData
+    metrics: metricsData,
+    cookies: cookieAnalysis
   };
 }
 
