@@ -3,7 +3,7 @@ const puppeteer = require("puppeteer-core");
 // Token de Browserless
 const TOKEN = process.env.BROWSERLESS_TOKEN || "2ThMQelUWHfBWdM8f1e02d135a315e02e44d27e13e5020198";
 
-// Función para parsear cookies
+// Función para parsear cookies en cualquier formato
 function parseCookies(cookies, domain = '.tiktok.com') {
   if (!cookies) return [];
   
@@ -63,8 +63,9 @@ function parseCookies(cookies, domain = '.tiktok.com') {
   return cookieArray;
 }
 
-// Función para extraer histórico del mes anterior completo
+// Función para extraer histórico desde API directa
 async function extractHistorical(cookies) {
+  // Siempre extraer el mes anterior completo
   const browser = await puppeteer.connect({
     browserWSEndpoint: `wss://production-sfo.browserless.io?token=${TOKEN}`,
   });
@@ -80,9 +81,11 @@ async function extractHistorical(cookies) {
     }
 
     await page.setCookie(...cookieArray);
-    console.log('🔐 Cookies configuradas');
 
-    // Calcular primer y último día del mes anterior
+    console.log('🔐 Cookies configuradas');
+    console.log(`🔍 Conectando a API de TikTok... (Extrayendo mes anterior)`);
+
+    // Obtener mes anterior completo
     const now = new Date();
     
     // Primer día del mes actual
@@ -95,60 +98,24 @@ async function extractHistorical(cookies) {
     // Primer día del mes anterior
     const firstDayOfPrevMonth = new Date(lastDayOfPrevMonth.getFullYear(), lastDayOfPrevMonth.getMonth(), 1);
 
-    const daysInMonth = lastDayOfPrevMonth.getDate();
+    const daysPeriod = lastDayOfPrevMonth.getDate();
     
-    console.log(`📅 Extrayendo datos del mes: ${firstDayOfPrevMonth.toLocaleDateString('es-MX')} a ${lastDayOfPrevMonth.toLocaleDateString('es-MX')} (${daysInMonth} días)`);
+    console.log(`📅 Extrayendo datos del mes: ${firstDayOfPrevMonth.toLocaleDateString('es-MX')} a ${lastDayOfPrevMonth.toLocaleDateString('es-MX')} (${daysPeriod} días)`);
 
-    // Convertir a timestamps Unix en milisegundos (UTC)
-    const startTimestamp = firstDayOfPrevMonth.getTime();
-    const endTimestamp = new Date(lastDayOfPrevMonth.getFullYear(), lastDayOfPrevMonth.getMonth(), lastDayOfPrevMonth.getDate(), 23, 59, 59).getTime();
+    // El API de TikTok retorna (period - 1) valores completos
+    // Para obtener 'period' días de datos reales, pedimos 'period + 1' al API
+    const apiPeriod = daysPeriod + 1;
 
-    // Formato de fechas para UTCDateRange
-    const formatDateForUTC = (date) => {
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      return `${year}/${month}/${day}`;
-    };
-
-    const fromDate = formatDateForUTC(firstDayOfPrevMonth);
-    const toDate = formatDateForUTC(lastDayOfPrevMonth);
-
-    // Construir el parámetro dateRange como lo espera TikTok
-    const dateRange = {
-      type: 'custom',
-      dateRange: {
-        start: startTimestamp,
-        end: endTimestamp
-      },
-      UTCDateRange: {
-        from: `${fromDate} 00:00:00`,
-        to: `${toDate} 00:00:00`
-      }
-    };
-
-    const dateRangeEncoded = encodeURIComponent(JSON.stringify(dateRange));
-
-    // Construir URL de TikTok Studio CON parámetros dinámicos según el mes
-    const studioUrl = `https://www.tiktok.com/tiktokstudio/analytics?activeAnalyticsMetric=video_views&dateRange=${dateRangeEncoded}`;
-
-    console.log(`🌐 Navegando a TikTok Studio...`);
-    await page.goto(studioUrl, { waitUntil: 'networkidle2', timeout: 20000 });
-
-    // Esperar a que cargue la página
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // Hacer request al API interno con período dinámico
-    console.log('📡 Extrayendo datos de analíticas...');
-
+    // Construir parámetros para el request
     const typeRequests = [
-      { "insigh_type": "vv_history", "days": daysInMonth + 1, "end_days": 1 },
-      { "insigh_type": "pv_history", "days": daysInMonth + 1, "end_days": 1 },
-      { "insigh_type": "like_history", "days": daysInMonth + 1, "end_days": 1 },
-      { "insigh_type": "comment_history", "days": daysInMonth + 1, "end_days": 1 },
-      { "insigh_type": "share_history", "days": daysInMonth + 1, "end_days": 1 }
+      { "insigh_type": "vv_history", "days": apiPeriod, "end_days": 1 },
+      { "insigh_type": "pv_history", "days": apiPeriod, "end_days": 1 },
+      { "insigh_type": "like_history", "days": apiPeriod, "end_days": 1 },
+      { "insigh_type": "comment_history", "days": apiPeriod, "end_days": 1 },
+      { "insigh_type": "share_history", "days": apiPeriod, "end_days": 1 }
     ];
 
+    // Construir URL del endpoint
     const baseUrl = "https://www.tiktok.com/aweme/v2/data/insight/";
     const params = new URLSearchParams({
       locale: "en",
@@ -165,9 +132,13 @@ async function extractHistorical(cookies) {
       type_requests: JSON.stringify(typeRequests)
     });
 
-    const apiUrl = `${baseUrl}?${params.toString()}`;
-    await page.goto(apiUrl, { waitUntil: 'networkidle2', timeout: 15000 });
+    const url = `${baseUrl}?${params.toString()}`;
 
+    // Navegar al endpoint
+    console.log('📡 Solicitando datos históricos...');
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 15000 });
+
+    // Obtener el JSON
     const metricsData = await page.evaluate(() => {
       try {
         return JSON.parse(document.body.innerText);
@@ -180,22 +151,25 @@ async function extractHistorical(cookies) {
       throw new Error(`API error: ${metricsData?.status_msg || 'Unknown error'}`);
     }
 
-    // Procesar métricas
+    // ✅ TRANSFORMACIÓN COMPLETA EN EL BACKEND
+    // Función para procesar cada métrica
     function processMetric(rawArray) {
       if (!rawArray || rawArray.length === 0) return [];
       
+      // Filtrar solo elementos completados (status === 0)
       const allCompleted = rawArray
         .filter(item => item && item.status === 0)
         .map(item => item.value || 0);
       
-      // Tomar solo los últimos daysInMonth valores
-      if (allCompleted.length > daysInMonth) {
-        return allCompleted.slice(-daysInMonth);
-      }
+      // Si tenemos más de daysPeriod valores, tomar solo los últimos daysPeriod
+      const completedValues = allCompleted.slice(-daysPeriod);
       
-      return allCompleted;
+      return completedValues;
     }
 
+    // Generar array de fechas (del primer día al último día del mes anterior)
+
+    // Procesar todas las métricas
     const processedMetrics = {
       video_views: processMetric(metricsData.vv_history || []),
       profile_views: processMetric(metricsData.pv_history || []),
@@ -204,14 +178,7 @@ async function extractHistorical(cookies) {
       shares: processMetric(metricsData.share_history || [])
     };
 
-    // Generar array de fechas del mes anterior
-    const dates = [];
-    for (let i = 1; i <= daysInMonth; i++) {
-      const date = new Date(lastDayOfPrevMonth.getFullYear(), lastDayOfPrevMonth.getMonth(), i);
-      dates.push(date.toISOString().split('T')[0]);
-    }
-
-    // Mapear métricas con fechas
+    // Crear estructura de salida con fechas mapeadas
     const metrics = {};
     Object.keys(processedMetrics).forEach(metricName => {
       const values = processedMetrics[metricName];
@@ -226,6 +193,7 @@ async function extractHistorical(cookies) {
       };
     });
 
+    // Retornar datos ya transformados
     // Información del período
     const formatDate = (date) => {
       const day = String(date.getDate()).padStart(2, '0');
@@ -234,16 +202,21 @@ async function extractHistorical(cookies) {
       return `${day}/${month}/${year}`;
     };
     
+    const firstDateFormatted = formatDate(firstDayOfPrevMonth);
+    const lastDateFormatted = formatDate(lastDayOfPrevMonth);
+    
+    // Descripción legible del período
     const monthName = lastDayOfPrevMonth.toLocaleString('es-MX', { month: 'long', year: 'numeric' });
+    const periodDescription = `Mes anterior (${monthName})`;
 
     const historicalData = {
       timestamp: new Date().toISOString(),
-      period: daysInMonth,
-      periodDescription: `Mes anterior (${monthName})`,
+      period: daysPeriod,
+      periodDescription: periodDescription,
       dateRange: {
-        from: formatDate(firstDayOfPrevMonth),
-        to: formatDate(lastDayOfPrevMonth),
-        totalDays: daysInMonth
+        from: firstDateFormatted,
+        to: lastDateFormatted,
+        totalDays: daysPeriod
       },
       query_date: lastDayOfPrevMonth.toISOString().split('T')[0],
       metrics: metrics
@@ -259,22 +232,13 @@ async function extractHistorical(cookies) {
 
 // Exportar para serverless
 module.exports = async (req, res) => {
-  // CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
   try {
-    const cookiesInput = req.body?.tiktokCookies || req.query?.tiktokCookies;
+    const cookiesInput = req.body?.cookies || req.query?.cookies;
     
     if (!cookiesInput) {
       return res.status(400).json({
-        error: "Missing tiktokCookies parameter",
-        message: "Please provide tiktokCookies in request body"
+        error: "Missing cookies parameter",
+        message: "Please provide cookies in request body or query parameter"
       });
     }
 
@@ -301,7 +265,6 @@ module.exports = async (req, res) => {
     };
 
     const originalCookies = Array.isArray(cookies) ? cookies : [];
-    originalCookies.forEach(cookie => {
       if (!cookie.expirationDate) {
         cookieExpirationAnalysis.allCookies.push({
           name: cookie.name,
@@ -317,65 +280,79 @@ module.exports = async (req, res) => {
       const daysUntilExpiry = secondsUntilExpiry / (60 * 60 * 24);
       const expDate = new Date(expTimestamp * 1000);
       const isExpired = secondsUntilExpiry <= 0;
+      const isExpiringSoon = daysUntilExpiry <= 7 && daysUntilExpiry > 0;
 
-      const formattedDate = expDate.toLocaleString('es-MX');
+      const cookieInfo = {
+        name: cookie.name,
+        domain: cookie.domain,
+        expirationDate: expDate.toISOString(),
+        expirationDateFormatted: expDate.toLocaleString('es-MX'),
+        daysUntilExpiry: parseFloat(daysUntilExpiry.toFixed(2)),
+        status: isExpired ? 'EXPIRED' : isExpiringSoon ? 'EXPIRING_SOON' : 'VALID'
+      };
+
+      cookieExpirationAnalysis.allCookies.push(cookieInfo);
 
       if (isExpired) {
         cookieExpirationAnalysis.expiredCookies.push({
           name: cookie.name,
           domain: cookie.domain,
-          expirationDate: formattedDate,
-          daysUntilExpiry: 0,
-          status: 'EXPIRED'
+          expiredDate: expDate.toLocaleString('es-MX'),
+          daysOverdue: parseFloat(Math.abs(daysUntilExpiry).toFixed(2))
         });
-      } else if (daysUntilExpiry < 7) {
+      }
+
+      if (isExpiringSoon) {
         cookieExpirationAnalysis.expiringInWeek.push({
           name: cookie.name,
           domain: cookie.domain,
-          expirationDate: formattedDate,
-          daysUntilExpiry: parseFloat(daysUntilExpiry.toFixed(2)),
-          status: 'EXPIRING_SOON'
+          expirationDate: expDate.toLocaleString('es-MX'),
+          daysRemaining: parseFloat(daysUntilExpiry.toFixed(2))
         });
       }
 
-      if (!cookieExpirationAnalysis.soonestExpiring || secondsUntilExpiry < (cookieExpirationAnalysis.soonestExpiring.expirationTimestamp - nowTimestamp)) {
+      if (!isExpired && (!cookieExpirationAnalysis.soonestExpiring || expDate < new Date(cookieExpirationAnalysis.soonestExpiring.expirationDate))) {
         cookieExpirationAnalysis.soonestExpiring = {
           name: cookie.name,
           domain: cookie.domain,
-          expirationDate: formattedDate,
-          daysUntilExpiry: parseFloat(daysUntilExpiry.toFixed(2)),
-          expirationTimestamp: expTimestamp
+          expirationDate: expDate.toLocaleString('es-MX'),
+          daysUntilExpiry: parseFloat(daysUntilExpiry.toFixed(2))
         };
       }
+    });
 
-      cookieExpirationAnalysis.allCookies.push({
-        name: cookie.name,
-        domain: cookie.domain,
-        expirationDate: formattedDate,
-        expirationDateFormatted: expDate.toLocaleString('es-MX', { 
-          year: 'numeric', 
-          month: '2-digit', 
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit'
-        }),
-        daysUntilExpiry: parseFloat(daysUntilExpiry.toFixed(2)),
-        status: 'VALID'
-      });
+    cookieExpirationAnalysis.allCookies.sort((a, b) => {
+      if (a.status === 'SESSION') return 1;
+      if (b.status === 'SESSION') return -1;
+      const dateA = a.expirationDate === 'Never (session cookie)' ? Infinity : new Date(a.expirationDate);
+      const dateB = b.expirationDate === 'Never (session cookie)' ? Infinity : new Date(b.expirationDate);
+      return dateA - dateB;
     });
 
     result.cookies = cookieExpirationAnalysis;
-
-    console.log('✅ Extracción completada\n');
-
-    return res.status(200).json(result);
+    res.status(200).json(result);
   } catch (error) {
-    console.error('❌ Error:', error.message);
-    return res.status(500).json({ 
+    console.error('Error:', error);
+    res.status(500).json({
       error: error.message,
-      success: false,
-      hint: 'Las cookies pueden estar expiradas o TikTok requiere re-autenticación.'
+      success: false
     });
   }
 };
+
+// Para prueba local
+if (require.main === module) {
+  const fs = require('fs');
+  const cookies = JSON.parse(fs.readFileSync('./tiktok-cookies-new.json', 'utf-8'));
+  
+  extractHistorical(cookies, null, 28)
+    .then(result => {
+      console.log('\n✅ RESULTADO:');
+      console.log(JSON.stringify(result, null, 2));
+      process.exit(0);
+    })
+    .catch(error => {
+      console.error('❌ Error:', error);
+      process.exit(1);
+    });
+}
