@@ -136,7 +136,7 @@ async function extractHistorical(cookies) {
     await page.goto(studioUrl, { waitUntil: 'networkidle2', timeout: 20000 });
 
     // Esperar a que cargue la página
-    await page.waitForTimeout(2000);
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
     // Hacer request al API interno con período dinámico
     console.log('📡 Extrayendo datos de analíticas...');
