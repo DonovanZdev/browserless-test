@@ -248,18 +248,6 @@ async function extractHistoricalDirect(cookies, yearMonth = null) {
 module.exports = async (req, res) => {
   try {
     const cookiesInput = req.body?.cookies || req.query?.cookies;
-    
-    if (!cookiesInput) {
-      return res.status(400).json({
-        error: "Missing cookies parameter",
-        message: "Please provide cookies in request body or query parameter"
-      });
-    }
-
-// Exportar para serverless
-module.exports = async (req, res) => {
-  try {
-    const cookiesInput = req.body?.cookies || req.query?.cookies;
     const yearMonth = req.body?.yearMonth || req.query?.yearMonth;
     
     if (!cookiesInput) {
