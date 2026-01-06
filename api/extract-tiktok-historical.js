@@ -127,7 +127,14 @@ async function extractHistoricalDirect(cookies, yearMonth = null) {
   // Construir request al API
   // Calcular cuántos días hacia atrás necesitamos
   const now = new Date();
-  const daysBack = daysPeriod + now.getDate() - 1;
+  now.setHours(0, 0, 0, 0);
+  
+  // Copiar la fecha del último día del mes para cálculo
+  const targetDate = new Date(lastDayOfPrevMonth);
+  targetDate.setHours(0, 0, 0, 0);
+  
+  // Calcular días entre hoy y el último día del mes objetivo
+  const daysBack = Math.floor((now - targetDate) / (1000 * 60 * 60 * 24));
 
   const typeRequests = [
     { "insigh_type": "vv_history", "days": daysBack, "end_days": 0 },
