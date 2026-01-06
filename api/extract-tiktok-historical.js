@@ -174,13 +174,14 @@ async function extractHistorical(cookies) {
         .filter(item => item && item.status === 0)
         .map(item => item.value || 0);
       
-      // ⚠️ CORRECCIÓN: Tomar los PRIMEROS daysPeriod valores (orden cronológico)
-      // Los datos del API vienen: [día_antiguo, ..., día_reciente]
-      const completedValues = allCompleted.length >= daysPeriod 
-        ? allCompleted.slice(0, daysPeriod)  // Tomar primeros N (en orden temporal)
-        : allCompleted;  // Si hay menos, usar todo
+      // ✅ SOLUCIÓN: Saltarse el primer elemento y tomar los N siguientes
+      // El primer elemento es futuro/hoy (desalineado), se descarta
+      // slice(1, daysPeriod+1) = skip first, take next N
+      const completedValues = allCompleted.length > daysPeriod
+        ? allCompleted.slice(1, daysPeriod + 1)
+        : allCompleted.slice(1);
       
-      console.log(`  ├─ ${metricName}: recibidos=${allCompleted.length}, usados=${completedValues.length}`);
+      console.log(`  ├─ ${metricName}: recibidos=${allCompleted.length}, usados=${completedValues.length} (saltado primer elemento)`);
       
       return completedValues;
     }
