@@ -168,6 +168,12 @@ async function extractHistorical(cookies) {
     }
 
     // Generar array de fechas (del primer día al último día del mes anterior)
+    const dates = [];
+    for (let i = 0; i < daysPeriod; i++) {
+      const date = new Date(firstDayOfPrevMonth);
+      date.setDate(date.getDate() + i);
+      dates.push(date.toISOString().split('T')[0]);
+    }
 
     // Procesar todas las métricas
     const processedMetrics = {
@@ -265,6 +271,7 @@ module.exports = async (req, res) => {
     };
 
     const originalCookies = Array.isArray(cookies) ? cookies : [];
+    originalCookies.forEach(cookie => {
       if (!cookie.expirationDate) {
         cookieExpirationAnalysis.allCookies.push({
           name: cookie.name,
