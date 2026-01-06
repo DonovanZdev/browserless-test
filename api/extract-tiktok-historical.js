@@ -124,70 +124,32 @@ async function extractHistoricalDirect(cookies, yearMonth = null) {
   
   console.log(`📅 Extrayendo: ${firstDayOfPrevMonth.toLocaleDateString('es-MX')} a ${lastDayOfPrevMonth.toLocaleDateString('es-MX')} (${daysPeriod} días)\n`);
 
-  // Auto-detectar el mejor valor de 'days' para este período
-  console.log('🔍 Auto-detectando parámetro óptimo de days...');
-  const baseUrl = "https://www.tiktok.com/aweme/v2/data/insight/";
+  // Calcular días para el API
+  // Para el mes anterior: necesitamos incluir todos los días de ese mes más el día actual
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
   
-  let bestDays = daysPeriod;
-  let bestDataPoints = 0;
+  const targetDate = new Date(lastDayOfPrevMonth);
+  targetDate.setHours(0, 0, 0, 0);
   
-  // Probar rango de valores alrededor de daysPeriod
-  for (let offset = -3; offset <= 12; offset++) {
-    const testDays = daysPeriod + offset;
-    
-    const testTypeRequests = [
-      { "insigh_type": "vv_history", "days": testDays, "end_days": 0 }
-    ];
-    
-    const testParams = new URLSearchParams({
-      locale: "en",
-      aid: "1988",
-      priority_region: "MX",
-      tz_name: "America/Mexico_City",
-      app_name: "tiktok_creator_center",
-      app_language: "en",
-      device_platform: "web_pc",
-      channel: "tiktok_web",
-      device_id: "7586552972738463288",
-      os: "win",
-      tz_offset: "-6",
-      type_requests: JSON.stringify(testTypeRequests)
-    });
-
-    const testUrl = `${baseUrl}?${testParams.toString()}`;
-    
-    try {
-      const testResult = await makeRequest(testUrl, cookieHeader);
-      
-      if (testResult.status_code === 0 && testResult.vv_history) {
-        const vvValues = testResult.vv_history
-          .filter(item => item && item.status === 0)
-          .map(item => item.value || 0);
-        
-        if (vvValues.length >= daysPeriod) {
-          const dataPoints = vvValues.filter(v => v > 0).length;
-          
-          if (dataPoints > bestDataPoints) {
-            bestDataPoints = dataPoints;
-            bestDays = testDays;
-          }
-        }
-      }
-    } catch (e) {
-      // Continuar con siguiente offset
-    }
-  }
+  // Días desde el fin del mes objetivo hasta hoy
+  const daysBackBasic = Math.floor((now - targetDate) / (1000 * 60 * 60 * 24));
   
-  console.log(`✅ Mejor parámetro: days=${bestDays} (${bestDataPoints} puntos de datos)\n`);
+  // Para el mes anterior, la fórmula es: daysPeriod + daysBackBasic
+  // Esto asegura que incluya todos los días del mes objetivo
+  const daysParameter = daysPeriod + daysBackBasic;
+  
+  console.log(`📊 Parámetro: days=${daysParameter} (${daysPeriod} días del mes + ${daysBackBasic} días desde fin de mes)\n`);
 
   const typeRequests = [
-    { "insigh_type": "vv_history", "days": bestDays, "end_days": 0 },
-    { "insigh_type": "pv_history", "days": bestDays, "end_days": 0 },
-    { "insigh_type": "like_history", "days": bestDays, "end_days": 0 },
-    { "insigh_type": "comment_history", "days": bestDays, "end_days": 0 },
-    { "insigh_type": "share_history", "days": bestDays, "end_days": 0 }
+    { "insigh_type": "vv_history", "days": daysParameter, "end_days": 0 },
+    { "insigh_type": "pv_history", "days": daysParameter, "end_days": 0 },
+    { "insigh_type": "like_history", "days": daysParameter, "end_days": 0 },
+    { "insigh_type": "comment_history", "days": daysParameter, "end_days": 0 },
+    { "insigh_type": "share_history", "days": daysParameter, "end_days": 0 }
   ];
 
+  const baseUrl = "https://www.tiktok.com/aweme/v2/data/insight/";
   const params = new URLSearchParams({
     locale: "en",
     aid: "1988",
