@@ -83,7 +83,7 @@ async function makeRequest(url, cookieHeader) {
   });
 }
 
-async function extractHistoricalDirect(cookies) {
+async function extractHistoricalDirect(cookies, yearMonth = null) {
   console.log('🔐 Preparando cookies para request directo...');
   const cookieHeader = parseCookies(cookies);
   
@@ -93,25 +93,41 @@ async function extractHistoricalDirect(cookies) {
 
   console.log('📡 Realizando request HTTP directo al API de TikTok...\n');
 
-  // Obtener mes anterior
-  const now = new Date();
-  const firstOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const lastDayOfPrevMonth = new Date(firstOfThisMonth);
-  lastDayOfPrevMonth.setDate(lastDayOfPrevMonth.getDate() - 1);
-  const firstDayOfPrevMonth = new Date(lastDayOfPrevMonth.getFullYear(), lastDayOfPrevMonth.getMonth(), 1);
+  // Determinar el mes a extraer
+  let firstDayOfMonth, lastDayOfMonth;
+  
+  if (yearMonth) {
+    // Si se especifica un mes: "2025-12"
+    const [year, month] = yearMonth.split('-');
+    const parsedYear = parseInt(year);
+    const parsedMonth = parseInt(month) - 1; // JavaScript usa 0-11
+    
+    firstDayOfMonth = new Date(parsedYear, parsedMonth, 1);
+    lastDayOfMonth = new Date(parsedYear, parsedMonth + 1, 0);
+    
+    console.log(`📅 Mes especificado: ${yearMonth}`);
+  } else {
+    // Si no se especifica, usar mes anterior (comportamiento actual)
+    const now = new Date();
+    const firstOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    lastDayOfMonth = new Date(firstOfThisMonth);
+    lastDayOfMonth.setDate(lastDayOfMonth.getDate() - 1);
+    firstDayOfMonth = new Date(lastDayOfMonth.getFullYear(), lastDayOfMonth.getMonth(), 1);
+    
+    console.log(`📅 Sin parámetro: usando mes anterior`);
+  }
+  
+  const firstDayOfPrevMonth = firstDayOfMonth;
+  const lastDayOfPrevMonth = lastDayOfMonth;
 
   const daysPeriod = lastDayOfPrevMonth.getDate();
   
   console.log(`📅 Extrayendo: ${firstDayOfPrevMonth.toLocaleDateString('es-MX')} a ${lastDayOfPrevMonth.toLocaleDateString('es-MX')} (${daysPeriod} días)\n`);
 
   // Construir request al API
-  // El parámetro 'days' cuenta hacia ATRÁS desde HOY
-  // Para diciembre exacto siendo 6 de enero:
-  // Necesitamos: 31 (días de diciembre) + 6 (días de enero) - 1 = 36 días
-  
+  // Calcular cuántos días hacia atrás necesitamos
+  const now = new Date();
   const daysBack = daysPeriod + now.getDate() - 1;
-
-  console.log(`  Calculado: days=${daysBack} (período=${daysPeriod} + días actuales=${now.getDate()} - 1)\n`);
 
   const typeRequests = [
     { "insigh_type": "vv_history", "days": daysBack, "end_days": 0 },
@@ -217,7 +233,7 @@ async function extractHistoricalDirect(cookies) {
   return {
     timestamp: new Date().toISOString(),
     period: daysPeriod,
-    periodDescription: `Mes anterior (${lastDayOfPrevMonth.toLocaleString('es-MX', { month: 'long', year: 'numeric' })})`,
+    periodDescription: `${lastDayOfPrevMonth.toLocaleString('es-MX', { month: 'long', year: 'numeric' })}`,
     dateRange: {
       from: formatDate(firstDayOfPrevMonth),
       to: formatDate(lastDayOfPrevMonth),
@@ -240,13 +256,31 @@ module.exports = async (req, res) => {
       });
     }
 
+// Exportar para serverless
+module.exports = async (req, res) => {
+  try {
+    const cookiesInput = req.body?.cookies || req.query?.cookies;
+    const yearMonth = req.body?.yearMonth || req.query?.yearMonth;
+    
+    if (!cookiesInput) {
+      return res.status(400).json({
+        error: "Missing cookies parameter",
+        message: "Please provide cookies in request body or query parameter"
+      });
+    }
+
     const cookies = typeof cookiesInput === 'string' ? JSON.parse(cookiesInput) : cookiesInput;
     
     console.log('\n========================================');
-    console.log('   EXTRACCIÓN TIKTOK - DIRECT HTTP');
+    console.log('   EXTRACCIÓN TIKTOK HISTÓRICO');
+    if (yearMonth) {
+      console.log(`   Mes solicitado: ${yearMonth}`);
+    } else {
+      console.log('   (Mes anterior automático)');
+    }
     console.log('========================================\n');
 
-    const result = await extractHistoricalDirect(cookies);
+    const result = await extractHistoricalDirect(cookies, yearMonth);
     res.status(200).json(result);
   } catch (error) {
     console.error('Error:', error);
