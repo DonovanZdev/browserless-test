@@ -64,14 +64,23 @@ function parseCookies(cookies, domain = '.tiktok.com') {
 }
 
 // Función para extraer histórico desde API directa
-async function extractHistorical(cookies, referenceDate = null, period = 28) {
-  // Validar periodo válido
-  const validPeriods = [7, 14, 28, 30, 60];
-  if (!validPeriods.includes(Number(period))) {
-    throw new Error(`Invalid period. Must be one of: ${validPeriods.join(', ')}`);
-  }
+async function extractHistorical(cookies, referenceDate = null, period = 'last_month') {
+  // Determinar período en días
+  let daysPeriod;
+  let useLastMonth = true;
   
-  const daysPeriod = Number(period);
+  // Si se proporciona un período específico, usarlo
+  if (period && period !== 'last_month') {
+    const validPeriods = [7, 14, 28, 30, 60];
+    if (!validPeriods.includes(Number(period))) {
+      throw new Error(`Invalid period. Must be 'last_month' or one of: ${validPeriods.join(', ')}`);
+    }
+    daysPeriod = Number(period);
+    useLastMonth = false;
+  } else {
+    // Por defecto: último mes completo
+    useLastMonth = true;
+  }
   
   const browser = await puppeteer.connect({
     browserWSEndpoint: `wss://production-sfo.browserless.io?token=${TOKEN}`,
@@ -147,7 +156,6 @@ async function extractHistorical(cookies, referenceDate = null, period = 28) {
       if (!rawArray || rawArray.length === 0) return [];
       
       // Filtrar solo elementos completados (status === 0)
-      // Tomar solo los últimos 'daysPeriod' elementos (ignorar el primero incompleto)
       const allCompleted = rawArray
         .filter(item => item && item.status === 0)
         .map(item => item.value || 0);
@@ -158,16 +166,38 @@ async function extractHistorical(cookies, referenceDate = null, period = 28) {
       return completedValues;
     }
 
-    // Obtener ayer en México (UTC-6)
-    const now = new Date();
-    const mexicoDate = new Date(now.getTime() - (6 * 60 * 60 * 1000));
-    const yesterday = new Date(mexicoDate);
-    yesterday.setHours(0, 0, 0, 0);
-    yesterday.setDate(yesterday.getDate() - 1);
+    // Calcular período
+    let firstDate, lastDate;
+    
+    if (useLastMonth) {
+      // Obtener mes anterior completo
+      const now = new Date();
+      
+      // Primer día del mes actual
+      const firstOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      
+      // Último día del mes anterior = un día antes del primer día de este mes
+      lastDate = new Date(firstOfThisMonth);
+      lastDate.setDate(lastDate.getDate() - 1);
+      
+      // Primer día del mes anterior
+      firstDate = new Date(lastDate.getFullYear(), lastDate.getMonth(), 1);
+      
+      // Calcular días en el mes anterior
+      daysPeriod = lastDate.getDate();
+    } else {
+      // Obtener ayer en México (UTC-6)
+      const now = new Date();
+      const mexicoDate = new Date(now.getTime() - (6 * 60 * 60 * 1000));
+      const yesterday = new Date(mexicoDate);
+      yesterday.setHours(0, 0, 0, 0);
+      yesterday.setDate(yesterday.getDate() - 1);
 
-    // Calcular fecha inicial (ayer - (periodo - 1) días)
-    const firstDate = new Date(yesterday);
-    firstDate.setDate(firstDate.getDate() - (daysPeriod - 1));
+      // Calcular fecha inicial (ayer - (periodo - 1) días)
+      lastDate = new Date(yesterday);
+      firstDate = new Date(yesterday);
+      firstDate.setDate(firstDate.getDate() - (daysPeriod - 1));
+    }
 
     // Generar array de fechas
     const dates = [];
@@ -211,10 +241,16 @@ async function extractHistorical(cookies, referenceDate = null, period = 28) {
     };
     
     const firstDateFormatted = formatDate(firstDate);
-    const lastDateFormatted = formatDate(yesterday);
+    const lastDateFormatted = formatDate(lastDate);
     
     // Descripción legible del período
-    const periodDescription = `Últimos ${daysPeriod} días (sin incluir hoy)`;
+    let periodDescription;
+    if (useLastMonth) {
+      const monthName = lastDate.toLocaleString('es-MX', { month: 'long', year: 'numeric' });
+      periodDescription = `Mes anterior (${monthName})`;
+    } else {
+      periodDescription = `Últimos ${daysPeriod} días (sin incluir hoy)`;
+    }
 
     const historicalData = {
       timestamp: new Date().toISOString(),
@@ -225,7 +261,7 @@ async function extractHistorical(cookies, referenceDate = null, period = 28) {
         to: lastDateFormatted,
         totalDays: daysPeriod
       },
-      query_date: yesterday.toISOString().split('T')[0],
+      query_date: lastDate.toISOString().split('T')[0],
       metrics: metrics
     };
 
@@ -251,23 +287,15 @@ module.exports = async (req, res) => {
 
     const cookies = typeof cookiesInput === 'string' ? JSON.parse(cookiesInput) : cookiesInput;
     
-    // Permitir que el usuario envíe la fecha de referencia (último día incluido)
-    // Si no la envía, usamos ayer
-    let referenceDate = req.body?.referenceDate || req.query?.referenceDate;
-    if (referenceDate) {
-      referenceDate = new Date(referenceDate);
-    } else {
-      referenceDate = new Date();
-      referenceDate.setDate(referenceDate.getDate() - 1); // Ayer por defecto
-    }
-    
-    // Obtener el período del request (7, 14, 28, 30 días)
-    const period = req.body.period || 28;
+    // Obtener el período del request
+    // Por defecto: 'last_month' (mes anterior completo)
+    // Alternativa: número de días (7, 14, 28, 30, 60)
+    const period = req.body.period || req.query.period || 'last_month';
     
     // Guardar cookies originales para análisis de expiración
     const originalCookies = Array.isArray(cookies) ? cookies : [];
     
-    const result = await extractHistorical(cookies, referenceDate, period);
+    const result = await extractHistorical(cookies, null, period);
     
     // Agregar análisis de expiración de cookies al resultado
     const now = new Date();
