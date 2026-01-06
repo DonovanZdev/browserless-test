@@ -125,21 +125,20 @@ async function extractHistoricalDirect(cookies, yearMonth = null) {
   console.log(`📅 Extrayendo: ${firstDayOfPrevMonth.toLocaleDateString('es-MX')} a ${lastDayOfPrevMonth.toLocaleDateString('es-MX')} (${daysPeriod} días)\n`);
 
   // Calcular días para el API
-  // Para el mes anterior: necesitamos incluir todos los días de ese mes más el día actual
+  // Fórmula: para obtener exactamente los días del mes anterior, usamos daysPeriod + (daysBackBasic - 1)
+  // Esto compensa el offset inherente del API
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   
   const targetDate = new Date(lastDayOfPrevMonth);
   targetDate.setHours(0, 0, 0, 0);
   
-  // Días desde el fin del mes objetivo hasta hoy
   const daysBackBasic = Math.floor((now - targetDate) / (1000 * 60 * 60 * 24));
   
-  // Para el mes anterior, la fórmula es: daysPeriod + daysBackBasic
-  // Esto asegura que incluya todos los días del mes objetivo
-  const daysParameter = daysPeriod + daysBackBasic;
+  // El parámetro days debe ser: daysPeriod + daysBackBasic - 1 para compensar el offset
+  const daysParameter = daysPeriod + daysBackBasic - 1;
   
-  console.log(`📊 Parámetro: days=${daysParameter} (${daysPeriod} días del mes + ${daysBackBasic} días desde fin de mes)\n`);
+  console.log(`📊 Parámetro: days=${daysParameter}\n`);
 
   const typeRequests = [
     { "insigh_type": "vv_history", "days": daysParameter, "end_days": 0 },
@@ -182,7 +181,8 @@ async function extractHistoricalDirect(cookies, yearMonth = null) {
       .filter(item => item && item.status === 0)
       .map(item => item.value || 0);
     
-    return allCompleted;
+    // Tomar solo exactamente daysPeriod valores
+    return allCompleted.slice(0, daysPeriod);
   }
 
   console.log('📊 Procesando métricas:');
