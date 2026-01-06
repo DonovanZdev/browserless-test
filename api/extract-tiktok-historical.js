@@ -151,9 +151,22 @@ async function extractHistorical(cookies) {
       throw new Error(`API error: ${metricsData?.status_msg || 'Unknown error'}`);
     }
 
+    // 🔍 DIAGNÓSTICO - Validar datos crudos antes de procesar
+    console.log('\n📋 === ANÁLISIS DE DATOS CRUDOS ===');
+    if (metricsData.vv_history && metricsData.vv_history.length > 0) {
+      console.log(`Total de elementos vv_history: ${metricsData.vv_history.length}`);
+      const vvFiltered = metricsData.vv_history
+        .filter(item => item && item.status === 0)
+        .map(item => item.value || 0);
+      console.log(`Primeros 3 elementos (status=0):`, vvFiltered.slice(0, 3));
+      console.log(`Últimos 3 elementos (status=0):`, vvFiltered.slice(-3));
+      console.log(`Total completados: ${vvFiltered.length}`);
+    }
+    console.log(`Período esperado: ${daysPeriod} días\n`);
+
     // ✅ TRANSFORMACIÓN COMPLETA EN EL BACKEND
     // Función para procesar cada métrica
-    function processMetric(rawArray) {
+    function processMetric(rawArray, metricName) {
       if (!rawArray || rawArray.length === 0) return [];
       
       // Filtrar solo elementos completados (status === 0)
@@ -161,8 +174,13 @@ async function extractHistorical(cookies) {
         .filter(item => item && item.status === 0)
         .map(item => item.value || 0);
       
-      // Si tenemos más de daysPeriod valores, tomar solo los últimos daysPeriod
-      const completedValues = allCompleted.slice(-daysPeriod);
+      // ⚠️ CORRECCIÓN: Tomar los PRIMEROS daysPeriod valores (orden cronológico)
+      // Los datos del API vienen: [día_antiguo, ..., día_reciente]
+      const completedValues = allCompleted.length >= daysPeriod 
+        ? allCompleted.slice(0, daysPeriod)  // Tomar primeros N (en orden temporal)
+        : allCompleted;  // Si hay menos, usar todo
+      
+      console.log(`  ├─ ${metricName}: recibidos=${allCompleted.length}, usados=${completedValues.length}`);
       
       return completedValues;
     }
@@ -176,12 +194,13 @@ async function extractHistorical(cookies) {
     }
 
     // Procesar todas las métricas
+    console.log('📊 Procesando métricas:');
     const processedMetrics = {
-      video_views: processMetric(metricsData.vv_history || []),
-      profile_views: processMetric(metricsData.pv_history || []),
-      likes: processMetric(metricsData.like_history || []),
-      comments: processMetric(metricsData.comment_history || []),
-      shares: processMetric(metricsData.share_history || [])
+      video_views: processMetric(metricsData.vv_history || [], 'video_views'),
+      profile_views: processMetric(metricsData.pv_history || [], 'profile_views'),
+      likes: processMetric(metricsData.like_history || [], 'likes'),
+      comments: processMetric(metricsData.comment_history || [], 'comments'),
+      shares: processMetric(metricsData.share_history || [], 'shares')
     };
 
     // Crear estructura de salida con fechas mapeadas
@@ -198,6 +217,17 @@ async function extractHistorical(cookies) {
         history: history
       };
     });
+
+    // 🔗 VALIDACIÓN DE ALINEACIÓN - Confirmar mapeo correcto fecha↔valor
+    console.log('\n🔗 === VALIDACIÓN DE ALINEACIÓN ===');
+    console.log(`  Fecha[0]: ${dates[0]} → Valor: ${processedMetrics.video_views[0]}`);
+    console.log(`  Fecha[${daysPeriod-1}]: ${dates[daysPeriod-1]} → Valor: ${processedMetrics.video_views[daysPeriod-1]}`);
+    if (processedMetrics.video_views.length !== daysPeriod) {
+      console.warn(`  ⚠️  ADVERTENCIA: Se esperaban ${daysPeriod} valores pero se obtuvieron ${processedMetrics.video_views.length}`);
+    } else {
+      console.log(`  ✅ Alineación correcta: ${daysPeriod} fechas ↔ ${daysPeriod} valores`);
+    }
+    console.log();
 
     // Retornar datos ya transformados
     // Información del período
