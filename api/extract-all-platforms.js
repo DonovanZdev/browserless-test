@@ -501,11 +501,16 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
         timestamps: [],
         dailyValues: [],
         dates: [],
-        totalValue: ''
+        totalValue: '',
+        debugInfo: {}
       };
       
       let targetContainer = null;
       const allDivs = Array.from(document.querySelectorAll('[role="region"], section, article, div'));
+      
+      // DEBUG: contar coincidencias para keywords problemáticos
+      const isClicsMetric = config.keyword && (Array.isArray(config.keyword) ? config.keyword.includes('Clics') : config.keyword === 'Clics');
+      let clicsMatches = [];
       
       for (const div of allDivs) {
         const text = div.textContent || '';
@@ -513,6 +518,15 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
         // Permitir keywords como string o array
         const keywords = Array.isArray(config.keyword) ? config.keyword : [config.keyword];
         const keywordMatched = keywords.some(kw => text.includes(kw));
+        
+        // DEBUG: si es métrica "Clics", registrar coincidencias
+        if (isClicsMetric && keywordMatched) {
+          clicsMatches.push({
+            text: text.substring(0, 200),
+            hasSvg: !!div.querySelector('svg'),
+            length: text.length
+          });
+        }
         
         if (!keywordMatched) continue;
         
@@ -530,6 +544,15 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
         if (targetContainer === null || text.length < targetContainer.textContent.length) {
           targetContainer = div;
         }
+      }
+      
+      // DEBUG: guardar info
+      if (isClicsMetric) {
+        result.debugInfo = {
+          clicsMatchesFound: clicsMatches.length,
+          selectedContainer: targetContainer ? 'YES' : 'NO',
+          matches: clicsMatches
+        };
       }
       
       if (!targetContainer) {
@@ -618,7 +641,8 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
     metricsData[metricConfig.name] = {
       totalValue: calculatedTotal,
       historicalData: historicalData,
-      totalPoints: historicalData.length
+      totalPoints: historicalData.length,
+      ...(metricValues.debugInfo && Object.keys(metricValues.debugInfo).length > 0 && { debugInfo: metricValues.debugInfo })
     };
     
     console.log(`  ✅ ${metricConfig.name}: ${historicalData.length} puntos | Total: ${calculatedTotal}`);
