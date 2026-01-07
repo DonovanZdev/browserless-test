@@ -455,8 +455,8 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
   if (businessId && assetId) {
     url = `https://business.facebook.com/latest/insights/results?business_id=${businessId}&asset_id=${assetId}&time_range=${timeRange}&platform=${platform}&audience_tab=demographics`;
   } else if (assetId) {
-    // Si solo tiene assetId, navegar directamente a esa URL
-    url = `https://business.facebook.com/latest/insights/results?asset_id=${assetId}`;
+    // Si solo tiene assetId, incluir time_range en la URL
+    url = `https://business.facebook.com/latest/insights/results?asset_id=${assetId}&time_range=${timeRange}`;
   } else {
     throw new Error('Se requiere al menos un assetId');
   }
