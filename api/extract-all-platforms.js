@@ -587,20 +587,18 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
       const timestampMatches = containerText.match(/(\d{10})/g) || [];
       const timestamps = [...new Set(timestampMatches)].map(t => parseInt(t)).sort((a, b) => a - b);
       
-      // Buscar valores - método más robusto para números pegados
-      if (timestamps.length > 0) {
-        // Si hay timestamps, extraer todos los números de 1-4 dígitos que NO sean timestamps
+      // SOLO "Clics enlace" usa extracción con regex para números pegados
+      const isClicsEnlaceMetric = config.name === 'Clics enlace';
+      
+      if (isClicsEnlaceMetric && timestamps.length > 0) {
+        // Para "Clics enlace": extraer números de 1-4 dígitos que NO sean timestamps
         const allNumbers = containerText.match(/(\d{1,4}(?!\d{6,}))/g) || [];
         
-        // Filtrar números que tienen sentido (no 0, no 10000+, no códigos de error)
         const validNumbers = allNumbers
           .map(x => parseInt(x))
           .filter((n, idx, arr) => {
-            // Evitar duplicados consecutivos
             if (idx > 0 && arr[idx - 1] === n) return false;
-            // Evitar números muy grandes
             if (n > 10000) return false;
-            // Permitir 0
             return true;
           });
         
@@ -609,7 +607,7 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
         }
       }
       
-      // Fallback: método anterior si no funcionó
+      // Método original para TODAS las demás métricas
       if (result.dailyValues.length === 0) {
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
