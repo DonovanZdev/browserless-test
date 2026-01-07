@@ -486,7 +486,7 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
     { name: 'Visualizaciones', keyword: 'Visualizaciones', exclude: isInstagram ? 'Alcance' : 'Espectadores' },
     { name: isInstagram ? 'Alcance' : 'Espectadores', keyword: isInstagram ? 'Alcance' : 'Espectadores', exclude: null },
     { name: 'Interacciones', keyword: 'Interacciones con el contenido', exclude: null },
-    { name: 'Clics enlace', keyword: ['Clics en el enlace', 'Clics enlace', 'Clics en enlace'], exclude: null },
+    { name: 'Clics enlace', keyword: ['Clics en el enlace', 'Clics en enlace', 'Clics del enlace', 'Clics'], exclude: null },
     { name: 'Visitas', keyword: 'Visitas', exclude: 'Clics' },
     { name: 'Seguidores', keyword: 'Seguidores', exclude: null }
   ];
@@ -515,6 +515,14 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
         const keywordMatched = keywords.some(kw => text.includes(kw));
         
         if (!keywordMatched) continue;
+        
+        // Para "Clics", excluir "Visitas" si es necesario
+        if (config.keyword && config.keyword.includes('Clics') && text.includes('Visitas')) {
+          const clicsIndex = text.indexOf('Clics');
+          const visitasIndex = text.indexOf('Visitas');
+          if (visitasIndex < clicsIndex) continue;
+        }
+        
         if (config.exclude && text.includes(config.exclude) && text.indexOf(config.exclude) < text.lastIndexOf(keywords.find(kw => text.includes(kw)))) continue;
         if (text.length > 5000) continue;
         if (!div.querySelector('svg')) continue;
