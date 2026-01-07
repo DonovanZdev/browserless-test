@@ -587,37 +587,35 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
       const timestampMatches = containerText.match(/(\d{10})/g) || [];
       const timestamps = [...new Set(timestampMatches)].map(t => parseInt(t)).sort((a, b) => a - b);
       
-      // SOLO "Clics enlace" - extracción especial con DEBUG
+      // SOLO "Clics enlace" - extracción especial
       const isClicsEnlaceMetric = config.name === 'Clics enlace';
       
       if (isClicsEnlaceMetric) {
-        // DEBUG: guardar estructura del contenedor para análisis
         result.debugStructure = {
-          containerHTML: targetContainer ? targetContainer.innerHTML.substring(0, 1000) : 'NO_CONTAINER',
           containerText: containerText.substring(0, 300),
           timestamps: timestamps.slice(0, 10),
           totalTimestamps: timestamps.length,
-          svgElements: targetContainer.querySelectorAll('svg').length,
           linesWithNumbers: lines.filter(l => (l.match(/\d/g) || []).length > 5).slice(0, 5)
         };
         
-        // Usar regex como antes: extraer números de 1-4 dígitos que NO sean timestamps
+        // Para "Clics enlace": buscar la línea con "Primary" que tiene los datos tab-separated
         if (timestamps.length > 0) {
-          const allNumbers = containerText.match(/(\d{1,4}(?!\d{6,}))/g) || [];
-          
-          const validNumbers = allNumbers
-            .map(x => parseInt(x))
-            .filter((n, idx, arr) => {
-              if (idx > 0 && arr[idx - 1] === n) return false;
-              if (n > 10000) return false;
-              return true;
-            });
-          
-          if (validNumbers.length >= timestamps.length) {
-            result.dailyValues = validNumbers.slice(0, timestamps.length);
-            result.debugStructure.methodUsed = 'regex_pattern';
-            result.debugStructure.regexMatches = allNumbers.length;
-            result.debugStructure.validNumbers = validNumbers.length;
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if (line.includes('Primary')) {
+              const numbers = line.split('\t')
+                .filter(x => x.trim())
+                .map(x => parseInt(x.trim()))
+                .filter(n => !isNaN(n) && n < 100000000 && n >= 0);
+              
+              // Saltar el primer elemento si es "Primary" (seria NaN o el nombre)
+              if (numbers.length >= timestamps.length) {
+                result.dailyValues = numbers.slice(0, timestamps.length);
+                result.debugStructure.methodUsed = 'primary_tab_separated';
+                result.debugStructure.foundPrimary = true;
+                break;
+              }
+            }
           }
         }
       }
