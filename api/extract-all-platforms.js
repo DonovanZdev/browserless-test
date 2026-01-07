@@ -587,28 +587,53 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
       const timestampMatches = containerText.match(/(\d{10})/g) || [];
       const timestamps = [...new Set(timestampMatches)].map(t => parseInt(t)).sort((a, b) => a - b);
       
-      // SOLO "Clics enlace" - extracción especial buscando datos reales, no escala de gráfico
+      // SOLO "Clics enlace" - extracción especial con DEBUG
       const isClicsEnlaceMetric = config.name === 'Clics enlace';
       
-      if (isClicsEnlaceMetric && timestamps.length > 0) {
-        // Buscar en atributos data- o contenedores específicos con los valores reales
-        // No usar regex simple que captura números de escala (Y-axis)
-        
-        // Intenta encontrar divs o spans que contengan los valores por día
-        // Patrón: buscar por atributos data específicos o elementos con valores numéricos
-        const dayContainers = targetContainer.querySelectorAll('[data-value], [data-tooltip*="Clics"], span[role="img"], div[aria-label*="Clics"]');
-        
-        if (dayContainers.length > 0) {
-          const values = Array.from(dayContainers).map(el => {
-            const val = el.getAttribute('data-value') || 
-                       el.getAttribute('aria-label') ||
-                       el.textContent;
-            const num = parseInt(val);
-            return isNaN(num) ? null : num;
-          }).filter(v => v !== null);
+      if (isClicsEnlaceMetric) {
+        // DEBUG: guardar estructura del contenedor para análisis
+        result.debugStructure = {
+          containerHTML: targetContainer ? targetContainer.innerHTML.substring(0, 2000) : 'NO_CONTAINER',
+          containerText: containerText.substring(0, 500),
+          timestamps: timestamps,
+          totalTimestamps: timestamps.length,
           
-          if (values.length >= timestamps.length) {
-            result.dailyValues = values.slice(0, timestamps.length);
+          // Buscar elementos SVG (gráfico)
+          svgElements: targetContainer.querySelectorAll('svg').length,
+          
+          // Buscar todos los divs/spans con números
+          elementsWithNumbers: Array.from(targetContainer.querySelectorAll('div, span, rect, circle')).slice(0, 20).map(el => ({
+            tag: el.tagName.toLowerCase(),
+            text: el.textContent ? el.textContent.substring(0, 50) : '',
+            attrs: {
+              'data-value': el.getAttribute('data-value'),
+              'aria-label': el.getAttribute('aria-label'),
+              'role': el.getAttribute('role'),
+              'class': el.getAttribute('class') ? el.getAttribute('class').substring(0, 100) : ''
+            }
+          })),
+          
+          // Buscar lineas con números
+          linesWithNumbers: lines.filter(l => (l.match(/\d/g) || []).length > 5).slice(0, 10)
+        };
+        
+        // Intentar extraer igual con la lógica anterior como fallback
+        if (timestamps.length > 0) {
+          const dayContainers = targetContainer.querySelectorAll('[data-value], [data-tooltip*="Clics"], span[role="img"], div[aria-label*="Clics"]');
+          
+          if (dayContainers.length > 0) {
+            const values = Array.from(dayContainers).map(el => {
+              const val = el.getAttribute('data-value') || 
+                         el.getAttribute('aria-label') ||
+                         el.textContent;
+              const num = parseInt(val);
+              return isNaN(num) ? null : num;
+            }).filter(v => v !== null);
+            
+            if (values.length >= timestamps.length) {
+              result.dailyValues = values.slice(0, timestamps.length);
+              result.debugStructure.methodUsed = 'data-value_attributes';
+            }
           }
         }
       }
@@ -674,7 +699,8 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
     metricsData[metricConfig.name] = {
       totalValue: calculatedTotal,
       historicalData: historicalData,
-      totalPoints: historicalData.length
+      totalPoints: historicalData.length,
+      ...(metricValues.debugStructure && metricConfig.name === 'Clics enlace' && { debugStructure: metricValues.debugStructure })
     };
     
     console.log(`  ✅ ${metricConfig.name}: ${historicalData.length} puntos | Total: ${calculatedTotal}`);
