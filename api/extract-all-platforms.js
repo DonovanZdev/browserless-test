@@ -587,23 +587,29 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
       const timestampMatches = containerText.match(/(\d{10})/g) || [];
       const timestamps = [...new Set(timestampMatches)].map(t => parseInt(t)).sort((a, b) => a - b);
       
-      // SOLO "Clics enlace" usa extracción con regex para números pegados
+      // SOLO "Clics enlace" - extracción especial buscando datos reales, no escala de gráfico
       const isClicsEnlaceMetric = config.name === 'Clics enlace';
       
       if (isClicsEnlaceMetric && timestamps.length > 0) {
-        // Para "Clics enlace": extraer números de 1-4 dígitos que NO sean timestamps
-        const allNumbers = containerText.match(/(\d{1,4}(?!\d{6,}))/g) || [];
+        // Buscar en atributos data- o contenedores específicos con los valores reales
+        // No usar regex simple que captura números de escala (Y-axis)
         
-        const validNumbers = allNumbers
-          .map(x => parseInt(x))
-          .filter((n, idx, arr) => {
-            if (idx > 0 && arr[idx - 1] === n) return false;
-            if (n > 10000) return false;
-            return true;
-          });
+        // Intenta encontrar divs o spans que contengan los valores por día
+        // Patrón: buscar por atributos data específicos o elementos con valores numéricos
+        const dayContainers = targetContainer.querySelectorAll('[data-value], [data-tooltip*="Clics"], span[role="img"], div[aria-label*="Clics"]');
         
-        if (validNumbers.length >= timestamps.length) {
-          result.dailyValues = validNumbers.slice(0, timestamps.length);
+        if (dayContainers.length > 0) {
+          const values = Array.from(dayContainers).map(el => {
+            const val = el.getAttribute('data-value') || 
+                       el.getAttribute('aria-label') ||
+                       el.textContent;
+            const num = parseInt(val);
+            return isNaN(num) ? null : num;
+          }).filter(v => v !== null);
+          
+          if (values.length >= timestamps.length) {
+            result.dailyValues = values.slice(0, timestamps.length);
+          }
         }
       }
       
