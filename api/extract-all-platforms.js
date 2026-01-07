@@ -486,7 +486,7 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
     { name: 'Visualizaciones', keyword: 'Visualizaciones', exclude: isInstagram ? 'Alcance' : 'Espectadores' },
     { name: isInstagram ? 'Alcance' : 'Espectadores', keyword: isInstagram ? 'Alcance' : 'Espectadores', exclude: null },
     { name: 'Interacciones', keyword: 'Interacciones con el contenido', exclude: null },
-    { name: 'Clics enlace', keyword: 'Clics en el enlace', exclude: null },
+    { name: 'Clics enlace', keyword: 'Clics enlace', exclude: null },
     { name: 'Visitas', keyword: 'Visitas', exclude: 'Clics' },
     { name: 'Seguidores', keyword: 'Seguidores', exclude: null }
   ];
