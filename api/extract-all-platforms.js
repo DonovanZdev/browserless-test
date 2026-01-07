@@ -561,6 +561,11 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
       
       result.containerText = targetContainer.innerText;
       
+      // DEBUG: guardar texto completo para problematic metrics
+      if (isClicsMetric && result.containerText.length < 600) {
+        result.debugInfo.containerText = result.containerText.substring(0, 300);
+      }
+      
       // Extraer valor total
       const containerText = targetContainer.innerText;
       const lines = containerText.split('\n');
@@ -582,14 +587,38 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
       const timestampMatches = containerText.match(/(\d{10})/g) || [];
       const timestamps = [...new Set(timestampMatches)].map(t => parseInt(t)).sort((a, b) => a - b);
       
-      // Buscar valores
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        if (line.includes('Primary') || (line.match(/\d/g) || []).length > 20) {
-          const numbers = line.split('\t').filter(x => x.trim()).map(x => parseInt(x.trim())).filter(n => !isNaN(n) && n < 100000000 && n > 0);
-          if (numbers.length > 10) {
-            result.dailyValues = numbers.slice(0, Math.min(timestamps.length, 100));
-            break;
+      // Buscar valores - método más robusto para números pegados
+      if (timestamps.length > 0) {
+        // Si hay timestamps, extraer todos los números de 1-4 dígitos que NO sean timestamps
+        const allNumbers = containerText.match(/(\d{1,4}(?!\d{6,}))/g) || [];
+        
+        // Filtrar números que tienen sentido (no 0, no 10000+, no códigos de error)
+        const validNumbers = allNumbers
+          .map(x => parseInt(x))
+          .filter((n, idx, arr) => {
+            // Evitar duplicados consecutivos
+            if (idx > 0 && arr[idx - 1] === n) return false;
+            // Evitar números muy grandes
+            if (n > 10000) return false;
+            // Permitir 0
+            return true;
+          });
+        
+        if (validNumbers.length >= timestamps.length) {
+          result.dailyValues = validNumbers.slice(0, timestamps.length);
+        }
+      }
+      
+      // Fallback: método anterior si no funcionó
+      if (result.dailyValues.length === 0) {
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          if (line.includes('Primary') || (line.match(/\d/g) || []).length > 20) {
+            const numbers = line.split('\t').filter(x => x.trim()).map(x => parseInt(x.trim())).filter(n => !isNaN(n) && n < 100000000 && n > 0);
+            if (numbers.length > 10) {
+              result.dailyValues = numbers.slice(0, Math.min(timestamps.length, 100));
+              break;
+            }
           }
         }
       }
