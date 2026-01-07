@@ -668,8 +668,7 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
     metricsData[metricConfig.name] = {
       totalValue: calculatedTotal,
       historicalData: historicalData,
-      totalPoints: historicalData.length,
-      ...(metricValues.debugInfo && Object.keys(metricValues.debugInfo).length > 0 && { debugInfo: metricValues.debugInfo })
+      totalPoints: historicalData.length
     };
     
     console.log(`  ✅ ${metricConfig.name}: ${historicalData.length} puntos | Total: ${calculatedTotal}`);
