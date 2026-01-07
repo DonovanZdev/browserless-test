@@ -486,7 +486,7 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
     { name: 'Visualizaciones', keyword: 'Visualizaciones', exclude: isInstagram ? 'Alcance' : 'Espectadores' },
     { name: isInstagram ? 'Alcance' : 'Espectadores', keyword: isInstagram ? 'Alcance' : 'Espectadores', exclude: null },
     { name: 'Interacciones', keyword: 'Interacciones con el contenido', exclude: null },
-    { name: 'Clics enlace', keyword: 'Clics en el enlace', exclude: null },
+    { name: 'Clics enlace', keyword: ['Clics en el enlace', 'Clics enlace', 'Clics en enlace'], exclude: null },
     { name: 'Visitas', keyword: 'Visitas', exclude: 'Clics' },
     { name: 'Seguidores', keyword: 'Seguidores', exclude: null }
   ];
@@ -510,8 +510,12 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
       for (const div of allDivs) {
         const text = div.textContent || '';
         
-        if (!text.includes(config.keyword)) continue;
-        if (config.exclude && text.includes(config.exclude) && text.indexOf(config.exclude) < text.indexOf(config.keyword)) continue;
+        // Permitir keywords como string o array
+        const keywords = Array.isArray(config.keyword) ? config.keyword : [config.keyword];
+        const keywordMatched = keywords.some(kw => text.includes(kw));
+        
+        if (!keywordMatched) continue;
+        if (config.exclude && text.includes(config.exclude) && text.indexOf(config.exclude) < text.lastIndexOf(keywords.find(kw => text.includes(kw)))) continue;
         if (text.length > 5000) continue;
         if (!div.querySelector('svg')) continue;
         
@@ -531,8 +535,10 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
       const lines = containerText.split('\n');
       
       let foundMetricName = false;
+      const keywords = Array.isArray(config.keyword) ? config.keyword : [config.keyword];
+      
       for (const line of lines) {
-        if (line.includes(config.keyword)) {
+        if (keywords.some(kw => line.includes(kw))) {
           foundMetricName = true;
         }
         if (foundMetricName && line.match(/\d+[.,]?\d*\s*(mill|mil|k)?/)) {
