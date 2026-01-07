@@ -593,47 +593,31 @@ async function extractMetrics(cookies, period = 'LAST_28D', platform = 'Facebook
       if (isClicsEnlaceMetric) {
         // DEBUG: guardar estructura del contenedor para análisis
         result.debugStructure = {
-          containerHTML: targetContainer ? targetContainer.innerHTML.substring(0, 2000) : 'NO_CONTAINER',
-          containerText: containerText.substring(0, 500),
-          timestamps: timestamps,
+          containerHTML: targetContainer ? targetContainer.innerHTML.substring(0, 1000) : 'NO_CONTAINER',
+          containerText: containerText.substring(0, 300),
+          timestamps: timestamps.slice(0, 10),
           totalTimestamps: timestamps.length,
-          
-          // Buscar elementos SVG (gráfico)
           svgElements: targetContainer.querySelectorAll('svg').length,
-          
-          // Buscar todos los divs/spans con números
-          elementsWithNumbers: Array.from(targetContainer.querySelectorAll('div, span, rect, circle')).slice(0, 20).map(el => ({
-            tag: el.tagName.toLowerCase(),
-            text: el.textContent ? el.textContent.substring(0, 50) : '',
-            attrs: {
-              'data-value': el.getAttribute('data-value'),
-              'aria-label': el.getAttribute('aria-label'),
-              'role': el.getAttribute('role'),
-              'class': el.getAttribute('class') ? el.getAttribute('class').substring(0, 100) : ''
-            }
-          })),
-          
-          // Buscar lineas con números
-          linesWithNumbers: lines.filter(l => (l.match(/\d/g) || []).length > 5).slice(0, 10)
+          linesWithNumbers: lines.filter(l => (l.match(/\d/g) || []).length > 5).slice(0, 5)
         };
         
-        // Intentar extraer igual con la lógica anterior como fallback
+        // Usar regex como antes: extraer números de 1-4 dígitos que NO sean timestamps
         if (timestamps.length > 0) {
-          const dayContainers = targetContainer.querySelectorAll('[data-value], [data-tooltip*="Clics"], span[role="img"], div[aria-label*="Clics"]');
+          const allNumbers = containerText.match(/(\d{1,4}(?!\d{6,}))/g) || [];
           
-          if (dayContainers.length > 0) {
-            const values = Array.from(dayContainers).map(el => {
-              const val = el.getAttribute('data-value') || 
-                         el.getAttribute('aria-label') ||
-                         el.textContent;
-              const num = parseInt(val);
-              return isNaN(num) ? null : num;
-            }).filter(v => v !== null);
-            
-            if (values.length >= timestamps.length) {
-              result.dailyValues = values.slice(0, timestamps.length);
-              result.debugStructure.methodUsed = 'data-value_attributes';
-            }
+          const validNumbers = allNumbers
+            .map(x => parseInt(x))
+            .filter((n, idx, arr) => {
+              if (idx > 0 && arr[idx - 1] === n) return false;
+              if (n > 10000) return false;
+              return true;
+            });
+          
+          if (validNumbers.length >= timestamps.length) {
+            result.dailyValues = validNumbers.slice(0, timestamps.length);
+            result.debugStructure.methodUsed = 'regex_pattern';
+            result.debugStructure.regexMatches = allNumbers.length;
+            result.debugStructure.validNumbers = validNumbers.length;
           }
         }
       }
