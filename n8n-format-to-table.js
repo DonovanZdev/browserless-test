@@ -85,7 +85,8 @@ const rows = Array.from(daysMap.values())
     'Veces Compartido': day.shares || 0,
     'Audiencia Alcanzada': day.reached_audience || 0,
     'Seguidores': day.followers || 0,
-    'Período (Días)': input.period,
+    'Período': input.periodRange || `${input.period} días`,
+    'Descripción Período': input.periodDescription || '',
     'Fecha Extracción': extractedDate.toISOString().split('T')[0],
     'Hora Extracción': extractedDate.toISOString().split('T')[1].substring(0, 8),
     'Zona Horaria': 'UTC-6 (México)'
