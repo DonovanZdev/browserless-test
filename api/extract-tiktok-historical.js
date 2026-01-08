@@ -242,10 +242,18 @@ async function extractHistoricalDirect(cookies, yearMonth = null) {
     return `${day}/${month}/${year}`;
   };
 
+  const formatDateCompact = (date) => {
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}-${month}-${year}`;
+  };
+
   return {
     timestamp: new Date().toISOString(),
     period: daysPeriod,
     periodDescription: `${lastDayOfPrevMonth.toLocaleString('es-MX', { month: 'long', year: 'numeric' })}`,
+    periodRange: `${formatDateCompact(firstDayOfPrevMonth)} al ${formatDateCompact(lastDayOfPrevMonth)}`,
     dateRange: {
       from: formatDate(firstDayOfPrevMonth),
       to: formatDate(lastDayOfPrevMonth),
